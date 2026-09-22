@@ -76,7 +76,7 @@
   #btn-new-js { flex: 1; min-width: 110px; }
   #btn-new-folder { flex: 1; min-width: 90px; }
   #btn-import-js { flex: 1; min-width: 90px; }
-  #btn-download-all { flex: 1; min-width: 110px; }
+  #btn-install-all { flex: 1; min-width: 100px; }
   #home-count { font-size: 11px; color: #888; white-space: nowrap; }
 
   #editor-view { display: none; flex-direction: column; height: 100%; }
@@ -190,41 +190,6 @@
     z-index: 20; padding: 16px; overflow: auto; font-size: 12px; color: #f48771;
     white-space: pre-wrap; font-family: monospace;
   }
-
-  .file-card-info, .file-card-name, .folder-card-info {
-    user-select: none; -webkit-user-select: none;
-    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
-  }
-
-  #paste-bar {
-    display: none; align-items: center; gap: 8px;
-    padding: 8px 16px; background: #0e3a52; border-top: 1px solid #14567a;
-  }
-  #paste-bar span { flex: 1; font-size: 12px; color: #cfe8f7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #paste-bar button { min-height: 30px; }
-
-  #ctx-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-    z-index: 50; align-items: flex-end; justify-content: center;
-  }
-  #ctx-overlay.show { display: flex; }
-  #ctx-sheet {
-    background: #1c1c1e; width: 100%; max-width: 480px;
-    border-radius: 14px 14px 0 0; padding-bottom: env(safe-area-inset-bottom, 8px);
-    animation: ctx-slide-up .15s ease-out;
-  }
-  @keyframes ctx-slide-up { from { transform: translateY(16px); opacity: .5; } to { transform: none; opacity: 1; } }
-  #ctx-title {
-    padding: 16px 18px 12px; font-size: 14px; font-weight: 500; color: #fff;
-    border-bottom: 1px solid #333; word-break: break-all;
-  }
-  .ctx-item {
-    display: flex; align-items: center; gap: 16px; padding: 15px 18px;
-    font-size: 14px; color: #eee;
-    user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
-  }
-  .ctx-item:active { background: #2a2a2c; }
-  .ctx-icon { width: 20px; text-align: center; font-size: 15px; }
 </style>
 </head>
 <body>
@@ -239,13 +204,12 @@
       <p id="home-subtitle">File JavaScript kamu, tersimpan di HP.</p>
     </div>
     <div id="home-list"></div>
-    <div id="paste-bar"></div>
     <div id="home-actions">
       <button id="btn-new-js" class="primary">+ Buat Js Baru</button>
       <button id="btn-new-folder">+ Folder</button>
       <button id="btn-import-js">Import Js</button>
-      <button id="btn-download-all">Download All</button>
-      <input type="file" id="file-import-js" accept=".js,.json,text/javascript,application/javascript,application/x-javascript,application/json,text/plain,*/*" style="display:none;" />
+      <button id="btn-install-all">Install All</button>
+      <input type="file" id="file-import-js" accept=".js,text/javascript,application/javascript,application/x-javascript,text/plain,*/*" style="display:none;" />
       <span id="home-count">0 / MAX_FILES file</span>
     </div>
   </div>
@@ -281,15 +245,6 @@
     <div id="status">Belum ada types. Tekan "Types" lalu pilih file ZIP.</div>
   </div>
 
-</div>
-
-<div id="ctx-overlay">
-  <div id="ctx-sheet">
-    <div id="ctx-title">nama file</div>
-    <div class="ctx-item" id="ctx-duplicate"><span class="ctx-icon">📄</span> Duplikat</div>
-    <div class="ctx-item" id="ctx-cut"><span class="ctx-icon">✂️</span> Potong</div>
-    <div class="ctx-item" id="ctx-rename"><span class="ctx-icon">✏️</span> Ubah nama</div>
-  </div>
 </div>
 
 <div id="settings-overlay">
@@ -462,16 +417,7 @@
     dateEl.textContent = 'Diubah ' + formatDate(f.updatedAt);
     info.appendChild(nameEl);
     info.appendChild(dateEl);
-    let suppressClick = false;
-    info.addEventListener('click', (ev) => {
-      if (suppressClick) { suppressClick = false; ev.preventDefault(); return; }
-      openFile(f.id);
-    });
-    bindLongPress(info, () => {
-      suppressClick = true;
-      setTimeout(() => { suppressClick = false; }, 600);
-      openFileContextMenu(f);
-    });
+    info.addEventListener('click', () => openFile(f.id));
 
     const delBtn = document.createElement('button');
     delBtn.className = 'file-card-del';
@@ -485,150 +431,6 @@
     card.appendChild(delBtn);
     return card;
   }
-
-  function bindLongPress(el, onLongPress) {
-    let timer = null;
-    let startX = 0, startY = 0;
-    function start(e) {
-      const t = e.touches ? e.touches[0] : e;
-      startX = t.clientX; startY = t.clientY;
-      timer = setTimeout(() => {
-        timer = null;
-        if (navigator.vibrate) navigator.vibrate(12);
-        onLongPress();
-      }, 450);
-    }
-    function move(e) {
-      if (timer === null) return;
-      const t = e.touches ? e.touches[0] : e;
-      if (Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10) {
-        clearTimeout(timer);
-        timer = null;
-      }
-    }
-    function end() {
-      clearTimeout(timer);
-      timer = null;
-    }
-    el.addEventListener('touchstart', start, { passive: true });
-    el.addEventListener('touchmove', move, { passive: true });
-    el.addEventListener('touchend', end);
-    el.addEventListener('touchcancel', end);
-    el.addEventListener('contextmenu', (e) => e.preventDefault());
-  }
-
-  let ctxFile = null;
-  function openFileContextMenu(f) {
-    ctxFile = f;
-    document.getElementById('ctx-title').textContent = fullPath(f);
-    document.getElementById('ctx-overlay').classList.add('show');
-  }
-  function closeFileContextMenu() {
-    document.getElementById('ctx-overlay').classList.remove('show');
-    ctxFile = null;
-  }
-  document.getElementById('ctx-overlay').addEventListener('click', (e) => {
-    if (e.target.id === 'ctx-overlay') closeFileContextMenu();
-  });
-
-  function duplicateFileFromList(f) {
-    const list = loadFilesIndex();
-    if (list.length >= MAX_FILES) { alert('Maksimal ' + MAX_FILES + ' file. Hapus salah satu dulu.'); return; }
-    const newPath = uniquePath(fullPath(f));
-    const parsed = parseFolderAndName(newPath);
-    const id = genId();
-    const content = localStorage.getItem(fileContentKey(f.id));
-    const newList = loadFilesIndex();
-    newList.push({ id: id, name: parsed.name, folder: parsed.folder, createdAt: Date.now(), updatedAt: Date.now() });
-    saveFilesIndex(newList);
-    localStorage.setItem(fileContentKey(id), content !== null ? content : defaultContentFor(parsed.name));
-    renderHome();
-  }
-
-  function renameFileFromList(f) {
-    const currentExtMatch = f.name.match(/\.(js|json)$/i);
-    const currentExt = currentExtMatch ? currentExtMatch[0] : '.js';
-    const newRaw = prompt('Nama baru:', f.name.replace(/\.(js|json)$/i, ''));
-    if (newRaw === null) return;
-    let name = newRaw.trim().replace(/\//g, '-');
-    if (!name) return;
-    if (!/\.(js|json)$/i.test(name)) name += currentExt;
-    const newPath = (f.folder ? f.folder + '/' : '') + name;
-    if (newPath !== fullPath(f) && pathExists(newPath)) {
-      alert('Nama itu sudah dipakai di folder ini.');
-      return;
-    }
-    const list = loadFilesIndex();
-    const item = list.find((x) => x.id === f.id);
-    if (!item) return;
-    item.name = name;
-    item.updatedAt = Date.now();
-    saveFilesIndex(list);
-    if (openModels[f.id]) { openModels[f.id].dispose(); delete openModels[f.id]; }
-    renderHome();
-  }
-
-  let cutClipboardId = null;
-
-  function renderPasteBar() {
-    const bar = document.getElementById('paste-bar');
-    bar.innerHTML = '';
-    if (!cutClipboardId) { bar.style.display = 'none'; return; }
-    const f = loadFilesIndex().find((x) => x.id === cutClipboardId);
-    if (!f) { cutClipboardId = null; bar.style.display = 'none'; return; }
-    bar.style.display = 'flex';
-    const label = document.createElement('span');
-    label.textContent = '📋 ' + fullPath(f);
-    const pasteBtn = document.createElement('button');
-    pasteBtn.className = 'primary';
-    pasteBtn.textContent = 'Tempel di sini';
-    pasteBtn.addEventListener('click', pasteCutFile);
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = 'Batal';
-    cancelBtn.addEventListener('click', () => { cutClipboardId = null; renderHome(); });
-    bar.appendChild(label);
-    bar.appendChild(pasteBtn);
-    bar.appendChild(cancelBtn);
-  }
-
-  function pasteCutFile() {
-    const list = loadFilesIndex();
-    const f = list.find((x) => x.id === cutClipboardId);
-    if (!f) { cutClipboardId = null; renderHome(); return; }
-    const targetFolder = currentFolder || '';
-    if ((f.folder || '') === targetFolder) {
-      alert('File sudah ada di folder ini.');
-      cutClipboardId = null;
-      renderHome();
-      return;
-    }
-    let newPath = (targetFolder ? targetFolder + '/' : '') + f.name;
-    newPath = uniquePath(newPath);
-    const parsed = parseFolderAndName(newPath);
-    f.folder = parsed.folder;
-    f.name = parsed.name;
-    f.updatedAt = Date.now();
-    saveFilesIndex(list);
-    if (openModels[f.id]) { openModels[f.id].dispose(); delete openModels[f.id]; }
-    cutClipboardId = null;
-    renderHome();
-  }
-
-  document.getElementById('ctx-duplicate').addEventListener('click', () => {
-    const f = ctxFile;
-    closeFileContextMenu();
-    if (f) duplicateFileFromList(f);
-  });
-  document.getElementById('ctx-cut').addEventListener('click', () => {
-    const f = ctxFile;
-    closeFileContextMenu();
-    if (f) { cutClipboardId = f.id; renderHome(); }
-  });
-  document.getElementById('ctx-rename').addEventListener('click', () => {
-    const f = ctxFile;
-    closeFileContextMenu();
-    if (f) renameFileFromList(f);
-  });
 
   function enterFolder(name) {
     currentFolder = name;
@@ -648,10 +450,12 @@
     const titleEl = document.getElementById('home-title');
     const subtitleEl = document.getElementById('home-subtitle');
     const newFolderBtn = document.getElementById('btn-new-folder');
+    const installAllBtn = document.getElementById('btn-install-all');
 
     if (currentFolder === null) {
       backBtn.style.display = 'none';
       newFolderBtn.style.display = '';
+      installAllBtn.style.display = '';
       titleEl.textContent = 'ScriptAPI Editor';
       subtitleEl.textContent = 'File JavaScript kamu, tersimpan di HP.';
 
@@ -694,6 +498,7 @@
     } else {
       backBtn.style.display = '';
       newFolderBtn.style.display = 'none';
+      installAllBtn.style.display = 'none';
       titleEl.textContent = currentFolder;
       subtitleEl.textContent = 'Folder';
 
@@ -710,7 +515,6 @@
 
     document.getElementById('home-count').textContent = allList.length + ' / ' + MAX_FILES + ' file';
     document.getElementById('btn-new-js').disabled = allList.length >= MAX_FILES;
-    renderPasteBar();
   }
 
   function deleteFile(id) {
@@ -792,7 +596,7 @@
     if (raw === null) return;
     raw = raw.trim().replace(/\//g, '-');
     if (!raw) return;
-    if (!/\.(js|json)$/i.test(raw)) raw += '.js';
+    if (!/\.js$/i.test(raw)) raw += '.js';
 
     const folder = currentFolder || '';
     const fp = (folder ? folder + '/' : '') + raw;
@@ -805,7 +609,7 @@
     const newList = loadFilesIndex();
     newList.push({ id: id, name: raw, folder: folder, createdAt: Date.now(), updatedAt: Date.now() });
     saveFilesIndex(newList);
-    localStorage.setItem(fileContentKey(id), defaultContentFor(raw));
+    localStorage.setItem(fileContentKey(id), defaultCode);
     openFile(id);
   });
 
@@ -829,28 +633,35 @@
     renderHome();
   });
 
-  document.getElementById('btn-download-all').addEventListener('click', async () => {
+  document.getElementById('btn-install-all').addEventListener('click', () => {
+    if (typeof JSZip === 'undefined') {
+      alert('JSZip belum termuat. Cek koneksi internet lalu reload halaman.');
+      return;
+    }
     const list = loadFilesIndex();
-    if (!list.length) { alert('Belum ada file.'); return; }
-    if (typeof JSZip === 'undefined') { alert('JSZip belum termuat. Cek koneksi internet lalu refresh.'); return; }
+    if (list.length === 0) {
+      alert('Belum ada file untuk di-install.');
+      return;
+    }
     const zip = new JSZip();
+    const scriptsFolder = zip.folder('scripts');
     list.forEach((f) => {
-      const content = localStorage.getItem(fileContentKey(f.id));
-      zip.file(fullPath(f), content !== null ? content : '');
+      const content = localStorage.getItem(fileContentKey(f.id)) || '';
+      const relPath = (f.folder ? f.folder + '/' : '') + f.name;
+      scriptsFolder.file(relPath, content);
     });
-    try {
-      const blob = await zip.generateAsync({ type: 'blob' });
+    zip.generateAsync({ type: 'blob' }).then((blob) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'project-files.zip';
+      a.download = 'scripts.zip';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (e) {
-      alert('Gagal bikin ZIP: ' + e.message);
-    }
+    }).catch((err) => {
+      alert('Gagal membuat ZIP: ' + err.message);
+    });
   });
 
   function uniquePath(path) {
@@ -858,23 +669,14 @@
     const idx = path.lastIndexOf('/');
     const dir = idx === -1 ? '' : path.substring(0, idx + 1);
     const base = idx === -1 ? path : path.substring(idx + 1);
-    const extMatch = base.match(/\.(js|json)$/i);
-    const ext = extMatch ? extMatch[0] : '';
-    const baseNoExt = ext ? base.slice(0, -ext.length) : base;
+    const baseNoExt = base.replace(/\.js$/i, '');
     let n = 2;
-    let candidate = dir + baseNoExt + ' (' + n + ')' + ext;
+    let candidate = dir + baseNoExt + ' (' + n + ').js';
     while (pathExists(candidate)) {
       n++;
-      candidate = dir + baseNoExt + ' (' + n + ')' + ext;
+      candidate = dir + baseNoExt + ' (' + n + ').js';
     }
     return candidate;
-  }
-
-  function langForName(name) {
-    return /\.json$/i.test(name) ? 'json' : 'javascript';
-  }
-  function defaultContentFor(name) {
-    return langForName(name) === 'json' ? '{\n\t\n}' : defaultCode;
   }
 
   document.getElementById('btn-import-js').addEventListener('click', () => {
@@ -900,7 +702,7 @@
     const reader = new FileReader();
     reader.onload = (ev) => {
       let name = file.name || 'imported.js';
-      if (!/\.(js|json)$/i.test(name)) name += '.js';
+      if (!/\.js$/i.test(name)) name += '.js';
       const folder = currentFolder || '';
       let path = (folder ? folder + '/' : '') + name;
       path = uniquePath(path);
@@ -931,7 +733,7 @@
     let model = monaco.editor.getModel(uri);
     if (!model) {
       const content = localStorage.getItem(fileContentKey(id));
-      model = monaco.editor.createModel(content !== null ? content : defaultContentFor(meta.name), langForName(meta.name), uri);
+      model = monaco.editor.createModel(content !== null ? content : defaultCode, 'javascript', uri);
       model.onDidChangeContent(() => {
         localStorage.setItem(fileContentKey(id), model.getValue());
         touchFile(id);
@@ -976,25 +778,12 @@
     }
 
     const VS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs';
-    // cdnjs gak nge-mirror file worker per-bahasa (json.worker.js, ts.worker.js) -
-    // jsdelivr nge-mirror npm package monaco-editor secara lengkap, jadi worker
-    // bahasa spesifik diambil dari sana, sisanya (editor inti) tetap dari cdnjs.
-    const WORKER_CDN_BASE = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs';
 
     self.MonacoEnvironment = {
-      getWorkerUrl: (moduleId, label) => {
-        let base = VS_BASE;
-        let workerFile = 'base/worker/workerMain.js';
-        if (label === 'json') {
-          base = WORKER_CDN_BASE;
-          workerFile = 'language/json/json.worker.js';
-        } else if (label === 'typescript' || label === 'javascript') {
-          base = WORKER_CDN_BASE;
-          workerFile = 'language/typescript/ts.worker.js';
-        }
+      getWorkerUrl: () => {
         const proxyCode = [
-          'self.MonacoEnvironment = { baseUrl: "' + base + '/../" };',
-          'importScripts("' + base + '/' + workerFile + '");'
+          'self.MonacoEnvironment = { baseUrl: "' + VS_BASE + '/../" };',
+          'importScripts("' + VS_BASE + '/base/worker/workerMain.js");'
         ].join('\n');
         const blob = new Blob([proxyCode], { type: 'text/javascript' });
         return URL.createObjectURL(blob);
@@ -1043,7 +832,6 @@
     );
 
     registerSnippets();
-    setupJsonSchemas();
 
     monaco.editor.defineTheme('mc-dark', {
       base: 'vs-dark',
@@ -1213,55 +1001,6 @@
     editor.onDidScrollChange(() => {
       enforceLockedAxis();
     });
-  }
-
-  function setupJsonSchemas() {
-    const BASE = 'https://raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/';
-    // Konvensi path repo: <behavior|resource>/<tipe>/<tipe>.json
-    // fileMatch dicocokkan ke nama folder tempat file JSON disimpan (konvensi struktur BP/RP asli).
-    const candidates = [
-      { path: 'behavior/entities/entities.json', match: '**/entities/*.json' },
-      { path: 'behavior/blocks/blocks.json', match: '**/blocks/*.json' },
-      { path: 'behavior/items/items.json', match: '**/items/*.json' },
-      { path: 'behavior/recipes/recipes.json', match: '**/recipes/*.json' },
-      { path: 'behavior/loot_tables/loot_tables.json', match: '**/loot_tables/*.json' },
-      { path: 'behavior/spawn_rules/spawn_rules.json', match: '**/spawn_rules/*.json' },
-      { path: 'behavior/trading/trading.json', match: '**/trading/*.json' },
-      { path: 'behavior/dialogue/dialogue.json', match: '**/dialogue/*.json' },
-      { path: 'behavior/feature_rules/feature_rules.json', match: '**/feature_rules/*.json' },
-      { path: 'behavior/features/features.json', match: '**/features/*.json' },
-      { path: 'behavior/biomes/biomes.json', match: '**/bp_biomes/*.json' },
-      { path: 'behavior/volumes/volumes.json', match: '**/volumes/*.json' },
-      { path: 'resource/entities/entities.json', match: '**/rp_entities/*.json' },
-      { path: 'resource/items/items.json', match: '**/rp_items/*.json' },
-      { path: 'resource/animations/animations.json', match: '**/animations/*.json' },
-      { path: 'resource/animation_controllers/animation_controllers.json', match: '**/animation_controllers/*.json' },
-      { path: 'resource/attachables/attachables.json', match: '**/attachables/*.json' },
-      { path: 'resource/particles/particles.json', match: '**/particles/*.json' },
-      { path: 'resource/render_controllers/render_controllers.json', match: '**/render_controllers/*.json' },
-      { path: 'resource/materials/materials.json', match: '**/materials/*.json' },
-      { path: 'resource/biomes/biomes.json', match: '**/rp_biomes/*.json' }
-    ];
-
-    Promise.allSettled(candidates.map((c) =>
-      fetch(BASE + c.path).then((r) => {
-        if (!r.ok) throw new Error('not found');
-        return r.json();
-      }).then((schema) => ({ uri: BASE + c.path, match: c.match, schema: schema }))
-    )).then((results) => {
-      const schemas = [];
-      results.forEach((res) => {
-        if (res.status === 'fulfilled') {
-          schemas.push({ uri: res.value.uri, fileMatch: [res.value.match], schema: res.value.schema });
-        }
-      });
-      monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-        validate: true,
-        allowComments: false,
-        enableSchemaRequest: true,
-        schemas: schemas
-      });
-    }).catch(() => {});
   }
 
   function registerSnippets() {
@@ -1648,15 +1387,13 @@
     if (!meta) return;
 
     const content = editor ? editor.getValue() : (localStorage.getItem(fileContentKey(meta.id)) || '');
-    const extMatch = meta.name.match(/\.(js|json)$/i);
-    const ext = extMatch ? extMatch[0] : '.js';
-    const baseName = ext ? meta.name.slice(0, -ext.length) : meta.name;
+    const baseName = meta.name.replace(/\.js$/i, '');
     const folder = meta.folder || '';
 
-    let candidateName = baseName + ' copy' + ext;
+    let candidateName = baseName + ' copy.js';
     let n = 2;
     while (pathExists((folder ? folder + '/' : '') + candidateName)) {
-      candidateName = baseName + ' copy ' + n + ext;
+      candidateName = baseName + ' copy ' + n + '.js';
       n++;
     }
 
@@ -1678,16 +1415,14 @@
     const meta = list.find((f) => f.id === currentFileId);
     if (!meta) return;
 
-    const currentExtMatch = meta.name.match(/\.(js|json)$/i);
-    const currentExt = currentExtMatch ? currentExtMatch[0] : '.js';
-    let raw = prompt('Nama baru untuk file ini (' + currentExt + ' otomatis ditambahkan):', meta.name.replace(/\.(js|json)$/i, ''));
+    let raw = prompt('Nama baru untuk file ini (.js otomatis ditambahkan):', meta.name.replace(/\.js$/i, ''));
     if (raw === null) return;
     raw = raw.trim().replace(/\//g, '-');
     if (!raw) {
       alert('Nama tidak boleh kosong.');
       return;
     }
-    if (!/\.(js|json)$/i.test(raw)) raw += currentExt;
+    if (!/\.js$/i.test(raw)) raw += '.js';
 
     const folder = meta.folder || '';
     const oldPath = fullPath(meta);
