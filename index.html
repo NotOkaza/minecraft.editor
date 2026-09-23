@@ -76,6 +76,8 @@
   #btn-new-js { flex: 1; min-width: 110px; }
   #btn-new-folder { flex: 1; min-width: 90px; }
   #btn-import-js { flex: 1; min-width: 90px; }
+  #btn-import-zip { flex: 1; min-width: 100px; }
+  #btn-import-folder { flex: 1; min-width: 110px; }
   #btn-download-all { flex: 1; min-width: 110px; }
   #home-count { font-size: 11px; color: #888; white-space: nowrap; }
 
@@ -190,6 +192,19 @@
     z-index: 20; padding: 16px; overflow: auto; font-size: 12px; color: #f48771;
     white-space: pre-wrap; font-family: monospace;
   }
+  #image-preview {
+    display: none; position: absolute; inset: 0; z-index: 15;
+    align-items: center; justify-content: center; overflow: auto; padding: 16px;
+    background:
+      linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+      linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+      linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    background-color: #1e1e1e;
+  }
+  #image-preview img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
 
   .file-card-info, .file-card-name, .folder-card-info {
     user-select: none; -webkit-user-select: none;
@@ -217,11 +232,13 @@
   #ctx-title {
     padding: 16px 18px 12px; font-size: 14px; font-weight: 500; color: #fff;
     border-bottom: 1px solid #333; word-break: break-all;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
   }
   .ctx-item {
     display: flex; align-items: center; gap: 16px; padding: 15px 18px;
     font-size: 14px; color: #eee;
     user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
   }
   .ctx-item:active { background: #2a2a2c; }
   .ctx-icon { width: 20px; text-align: center; font-size: 15px; }
@@ -243,9 +260,13 @@
     <div id="home-actions">
       <button id="btn-new-js" class="primary">+ Buat Js Baru</button>
       <button id="btn-new-folder">+ Folder</button>
-      <button id="btn-import-js">Import Js</button>
+      <button id="btn-import-js">Import</button>
+      <button id="btn-import-zip">Import ZIP</button>
+      <button id="btn-import-folder">Import Folder</button>
       <button id="btn-download-all">Download All</button>
-      <input type="file" id="file-import-js" accept=".js,.json,text/javascript,application/javascript,application/x-javascript,application/json,text/plain,*/*" style="display:none;" />
+      <input type="file" id="file-import-js" accept=".js,.json,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,text/javascript,application/javascript,application/x-javascript,application/json,image/*,text/plain,*/*" style="display:none;" />
+      <input type="file" id="file-import-zip" accept=".zip" style="display:none;" />
+      <input type="file" id="file-import-folder" webkitdirectory directory multiple style="display:none;" />
       <span id="home-count">0 / MAX_FILES file</span>
     </div>
   </div>
@@ -263,6 +284,9 @@
     <div style="position: relative; flex: 1; min-height: 0;">
       <div id="loading">Memuat editor...</div>
       <div id="err-box"></div>
+      <div id="image-preview">
+        <img id="image-preview-img" alt="preview" />
+      </div>
       <div id="editor-container"></div>
     </div>
     <div id="actionbar">
@@ -388,7 +412,7 @@
   const FONT_STYLE_KEY = 'mc-editor-font-style';
 
   const EDITOR_FONT = "'Roboto Mono', Consolas, monospace";
-  const MAX_FILES = 50;
+  const MAX_FILES = 200;
 
   let editor = null;
   let pendingZipTypes = null;
@@ -499,6 +523,39 @@
     return card;
   }
 
+  function buildFolderCard(fullName, displayName) {
+    const card = document.createElement('div');
+    card.className = 'folder-card';
+
+    const info = document.createElement('div');
+    info.className = 'folder-card-info';
+    info.textContent = '📁 ' + displayName;
+    let suppressClick = false;
+    info.addEventListener('click', (ev) => {
+      if (suppressClick) { suppressClick = false; ev.preventDefault(); return; }
+      enterFolder(fullName);
+    });
+    bindLongPress(info, () => {
+      suppressClick = true;
+      setTimeout(() => { suppressClick = false; }, 600);
+      openFolderContextMenu(fullName);
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'folder-card-del';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Hapus folder';
+    delBtn.setAttribute('aria-label', 'Hapus folder ' + displayName);
+    delBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      deleteFolder(fullName);
+    });
+
+    card.appendChild(info);
+    card.appendChild(delBtn);
+    return card;
+  }
+
   function bindLongPress(el, onLongPress) {
     let timer = null;
     let startX = 0, startY = 0;
@@ -530,15 +587,20 @@
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
-  let ctxFile = null;
+  let ctxTarget = null; // { type: 'file', ref: fileMeta } | { type: 'folder', ref: fullName }
   function openFileContextMenu(f) {
-    ctxFile = f;
+    ctxTarget = { type: 'file', ref: f };
     document.getElementById('ctx-title').textContent = fullPath(f);
+    document.getElementById('ctx-overlay').classList.add('show');
+  }
+  function openFolderContextMenu(fullName) {
+    ctxTarget = { type: 'folder', ref: fullName };
+    document.getElementById('ctx-title').textContent = '📁 ' + fullName;
     document.getElementById('ctx-overlay').classList.add('show');
   }
   function closeFileContextMenu() {
     document.getElementById('ctx-overlay').classList.remove('show');
-    ctxFile = null;
+    ctxTarget = null;
   }
   document.getElementById('ctx-overlay').addEventListener('click', (e) => {
     if (e.target.id === 'ctx-overlay') closeFileContextMenu();
@@ -559,13 +621,10 @@
   }
 
   function renameFileFromList(f) {
-    const currentExtMatch = f.name.match(/\.(js|json)$/i);
-    const currentExt = currentExtMatch ? currentExtMatch[0] : '.js';
-    const newRaw = prompt('Nama baru:', f.name.replace(/\.(js|json)$/i, ''));
+    const newRaw = prompt('Nama baru:', f.name);
     if (newRaw === null) return;
     let name = newRaw.trim().replace(/\//g, '-');
     if (!name) return;
-    if (!/\.(js|json)$/i.test(name)) name += currentExt;
     const newPath = (f.folder ? f.folder + '/' : '') + name;
     if (newPath !== fullPath(f) && pathExists(newPath)) {
       alert('Nama itu sudah dipakai di folder ini.');
@@ -581,37 +640,137 @@
     renderHome();
   }
 
-  let cutClipboardId = null;
+  function allFolderNamesSet() {
+    const folders = loadFoldersIndex();
+    const fileFolders = loadFilesIndex().filter((f) => f.folder).map((f) => f.folder);
+    return new Set(folders.concat(fileFolders));
+  }
+
+  function duplicateFolder(folderFullName) {
+    const list = loadFilesIndex();
+    const folders = loadFoldersIndex();
+    const prefix = folderFullName + '/';
+    const filesIn = list.filter((f) => f.folder === folderFullName || (f.folder || '').startsWith(prefix));
+    const foldersIn = folders.filter((n) => n === folderFullName || n.startsWith(prefix));
+
+    if (list.length + filesIn.length > MAX_FILES) {
+      alert('Gak cukup slot buat duplikat folder ini (butuh ' + filesIn.length + ' slot, sisa ' + (MAX_FILES - list.length) + ').');
+      return;
+    }
+
+    const idx = folderFullName.lastIndexOf('/');
+    const parent = idx === -1 ? '' : folderFullName.substring(0, idx);
+    const leaf = idx === -1 ? folderFullName : folderFullName.substring(idx + 1);
+    const allNames = allFolderNamesSet();
+    let n = 2;
+    let newFullName = (parent ? parent + '/' : '') + leaf + ' copy';
+    while (allNames.has(newFullName)) {
+      newFullName = (parent ? parent + '/' : '') + leaf + ' copy ' + n;
+      n++;
+    }
+
+    const newFolders = folders.slice();
+    foldersIn.forEach((n2) => { newFolders.push(newFullName + n2.substring(folderFullName.length)); });
+    saveFoldersIndex(newFolders);
+
+    const newList = loadFilesIndex();
+    filesIn.forEach((f) => {
+      const relFolder = f.folder === folderFullName ? '' : f.folder.substring(prefix.length);
+      const newFolder = newFullName + (relFolder ? '/' + relFolder : '');
+      const id = genId();
+      const content = localStorage.getItem(fileContentKey(f.id));
+      newList.push({ id: id, name: f.name, folder: newFolder, createdAt: Date.now(), updatedAt: Date.now() });
+      localStorage.setItem(fileContentKey(id), content !== null ? content : '');
+    });
+    saveFilesIndex(newList);
+    renderHome();
+  }
+
+  function renameFolderFromList(folderFullName) {
+    const idx = folderFullName.lastIndexOf('/');
+    const parent = idx === -1 ? '' : folderFullName.substring(0, idx);
+    const leaf = idx === -1 ? folderFullName : folderFullName.substring(idx + 1);
+    const newLeafRaw = prompt('Nama baru folder:', leaf);
+    if (newLeafRaw === null) return;
+    const newLeaf = newLeafRaw.trim().replace(/\//g, '-');
+    if (!newLeaf) return;
+    const newFullName = (parent ? parent + '/' : '') + newLeaf;
+    if (newFullName === folderFullName) return;
+    if (allFolderNamesSet().has(newFullName)) {
+      alert('Nama folder itu sudah dipakai.');
+      return;
+    }
+
+    const prefix = folderFullName + '/';
+    const folders = loadFoldersIndex();
+    const newFolders = folders.map((n) => {
+      if (n === folderFullName) return newFullName;
+      if (n.startsWith(prefix)) return newFullName + n.substring(folderFullName.length);
+      return n;
+    });
+    saveFoldersIndex(newFolders);
+
+    const list = loadFilesIndex();
+    list.forEach((f) => {
+      if (f.folder === folderFullName) {
+        f.folder = newFullName;
+        if (openModels[f.id]) { openModels[f.id].dispose(); delete openModels[f.id]; }
+      } else if ((f.folder || '').startsWith(prefix)) {
+        f.folder = newFullName + f.folder.substring(folderFullName.length);
+        if (openModels[f.id]) { openModels[f.id].dispose(); delete openModels[f.id]; }
+      }
+    });
+    saveFilesIndex(list);
+
+    if (currentFolder === folderFullName) currentFolder = newFullName;
+    else if ((currentFolder || '').startsWith(prefix)) currentFolder = newFullName + currentFolder.substring(folderFullName.length);
+
+    renderHome();
+  }
+
+  let clipboard = null; // { type: 'file', id } | { type: 'folder', path }
 
   function renderPasteBar() {
     const bar = document.getElementById('paste-bar');
     bar.innerHTML = '';
-    if (!cutClipboardId) { bar.style.display = 'none'; return; }
-    const f = loadFilesIndex().find((x) => x.id === cutClipboardId);
-    if (!f) { cutClipboardId = null; bar.style.display = 'none'; return; }
+    if (!clipboard) { bar.style.display = 'none'; return; }
+    let label3 = '';
+    if (clipboard.type === 'file') {
+      const f = loadFilesIndex().find((x) => x.id === clipboard.id);
+      if (!f) { clipboard = null; bar.style.display = 'none'; return; }
+      label3 = fullPath(f);
+    } else {
+      label3 = '📁 ' + clipboard.path;
+    }
     bar.style.display = 'flex';
     const label = document.createElement('span');
-    label.textContent = '📋 ' + fullPath(f);
+    label.textContent = '📋 ' + label3;
     const pasteBtn = document.createElement('button');
     pasteBtn.className = 'primary';
     pasteBtn.textContent = 'Tempel di sini';
-    pasteBtn.addEventListener('click', pasteCutFile);
+    pasteBtn.addEventListener('click', pasteClipboard);
     const cancelBtn = document.createElement('button');
     cancelBtn.textContent = 'Batal';
-    cancelBtn.addEventListener('click', () => { cutClipboardId = null; renderHome(); });
+    cancelBtn.addEventListener('click', () => { clipboard = null; renderHome(); });
     bar.appendChild(label);
     bar.appendChild(pasteBtn);
     bar.appendChild(cancelBtn);
   }
 
+  function pasteClipboard() {
+    if (!clipboard) return;
+    if (clipboard.type === 'file') pasteCutFile();
+    else pasteCutFolder();
+  }
+
   function pasteCutFile() {
     const list = loadFilesIndex();
-    const f = list.find((x) => x.id === cutClipboardId);
-    if (!f) { cutClipboardId = null; renderHome(); return; }
+    const f = list.find((x) => x.id === clipboard.id);
+    if (!f) { clipboard = null; renderHome(); return; }
     const targetFolder = currentFolder || '';
     if ((f.folder || '') === targetFolder) {
       alert('File sudah ada di folder ini.');
-      cutClipboardId = null;
+      clipboard = null;
       renderHome();
       return;
     }
@@ -623,24 +782,84 @@
     f.updatedAt = Date.now();
     saveFilesIndex(list);
     if (openModels[f.id]) { openModels[f.id].dispose(); delete openModels[f.id]; }
-    cutClipboardId = null;
+    clipboard = null;
+    renderHome();
+  }
+
+  function pasteCutFolder() {
+    const folderFullName = clipboard.path;
+    const targetParent = currentFolder || '';
+    if (targetParent === folderFullName || targetParent.startsWith(folderFullName + '/')) {
+      alert('Gak bisa mindahin folder ke dalam dirinya sendiri.');
+      clipboard = null;
+      renderHome();
+      return;
+    }
+    const idx = folderFullName.lastIndexOf('/');
+    const leaf = idx === -1 ? folderFullName : folderFullName.substring(idx + 1);
+    let newFullName = (targetParent ? targetParent + '/' : '') + leaf;
+
+    if (newFullName === folderFullName) {
+      alert('Folder sudah ada di sini.');
+      clipboard = null;
+      renderHome();
+      return;
+    }
+
+    const allNames = allFolderNamesSet();
+    let n = 2;
+    const base = newFullName;
+    while (allNames.has(newFullName)) {
+      newFullName = base + ' (' + n + ')';
+      n++;
+    }
+
+    const prefix = folderFullName + '/';
+    const folders = loadFoldersIndex();
+    const newFolders = folders.map((n2) => {
+      if (n2 === folderFullName) return newFullName;
+      if (n2.startsWith(prefix)) return newFullName + n2.substring(folderFullName.length);
+      return n2;
+    });
+    saveFoldersIndex(newFolders);
+
+    const list = loadFilesIndex();
+    list.forEach((f) => {
+      if (f.folder === folderFullName) {
+        f.folder = newFullName;
+        if (openModels[f.id]) { openModels[f.id].dispose(); delete openModels[f.id]; }
+      } else if ((f.folder || '').startsWith(prefix)) {
+        f.folder = newFullName + f.folder.substring(folderFullName.length);
+        if (openModels[f.id]) { openModels[f.id].dispose(); delete openModels[f.id]; }
+      }
+    });
+    saveFilesIndex(list);
+
+    clipboard = null;
     renderHome();
   }
 
   document.getElementById('ctx-duplicate').addEventListener('click', () => {
-    const f = ctxFile;
+    const t = ctxTarget;
     closeFileContextMenu();
-    if (f) duplicateFileFromList(f);
+    if (!t) return;
+    if (t.type === 'file') duplicateFileFromList(t.ref);
+    else duplicateFolder(t.ref);
   });
   document.getElementById('ctx-cut').addEventListener('click', () => {
-    const f = ctxFile;
+    const t = ctxTarget;
     closeFileContextMenu();
-    if (f) { cutClipboardId = f.id; renderHome(); }
+    if (!t) return;
+    if (t.type === 'file') clipboard = { type: 'file', id: t.ref.id };
+    else clipboard = { type: 'folder', path: t.ref };
+    renderHome();
   });
   document.getElementById('ctx-rename').addEventListener('click', () => {
-    const f = ctxFile;
+    const t = ctxTarget;
     closeFileContextMenu();
-    if (f) renameFileFromList(f);
+    if (!t) return;
+    if (t.type === 'file') renameFileFromList(t.ref);
+    else renameFolderFromList(t.ref);
   });
 
   function enterFolder(name) {
@@ -648,7 +867,11 @@
     renderHome();
   }
   function exitFolder() {
-    currentFolder = null;
+    if (currentFolder && currentFolder.indexOf('/') !== -1) {
+      currentFolder = currentFolder.substring(0, currentFolder.lastIndexOf('/'));
+    } else {
+      currentFolder = null;
+    }
     renderHome();
   }
 
@@ -682,27 +905,7 @@
         wrap.appendChild(empty);
       } else {
         folderNames.forEach((name) => {
-          const card = document.createElement('div');
-          card.className = 'folder-card';
-
-          const info = document.createElement('div');
-          info.className = 'folder-card-info';
-          info.textContent = '📁 ' + name;
-          info.addEventListener('click', () => enterFolder(name));
-
-          const delBtn = document.createElement('button');
-          delBtn.className = 'folder-card-del';
-          delBtn.textContent = '✕';
-          delBtn.title = 'Hapus folder';
-          delBtn.setAttribute('aria-label', 'Hapus folder ' + name);
-          delBtn.addEventListener('click', (event) => {
-            event.stopPropagation();
-            deleteFolder(name);
-          });
-
-          card.appendChild(info);
-          card.appendChild(delBtn);
-          wrap.appendChild(card);
+          wrap.appendChild(buildFolderCard(name, name));
         });
         rootFiles.forEach((f) => wrap.appendChild(buildFileCard(f)));
       }
@@ -729,27 +932,7 @@
       } else {
         childFolderNames.forEach((name) => {
           const fullName = currentFolder + '/' + name;
-          const card = document.createElement('div');
-          card.className = 'folder-card';
-
-          const info = document.createElement('div');
-          info.className = 'folder-card-info';
-          info.textContent = '📁 ' + name;
-          info.addEventListener('click', () => enterFolder(fullName));
-
-          const delBtn = document.createElement('button');
-          delBtn.className = 'folder-card-del';
-          delBtn.textContent = '✕';
-          delBtn.title = 'Hapus folder';
-          delBtn.setAttribute('aria-label', 'Hapus folder ' + name);
-          delBtn.addEventListener('click', (event) => {
-            event.stopPropagation();
-            deleteFolder(fullName);
-          });
-
-          card.appendChild(info);
-          card.appendChild(delBtn);
-          wrap.appendChild(card);
+          wrap.appendChild(buildFolderCard(fullName, name));
         });
         filesInFolder.forEach((f) => wrap.appendChild(buildFileCard(f)));
       }
@@ -835,13 +1018,16 @@
       return;
     }
     const promptLabel = currentFolder
-      ? 'Nama file baru di folder "' + currentFolder + '" (.js otomatis ditambahkan):'
-      : 'Nama file baru (.js otomatis ditambahkan):';
-    let raw = prompt(promptLabel, 'main');
+      ? 'Nama file baru di folder "' + currentFolder + '":'
+      : 'Nama file baru:';
+    let raw = prompt(promptLabel, '');
     if (raw === null) return;
     raw = raw.trim().replace(/\//g, '-');
     if (!raw) return;
-    if (!/\.(js|json)$/i.test(raw)) raw += '.js';
+    if (isImageName(raw)) {
+      alert('Buat file gambar gak bisa dari sini (gak ada isinya) - pakai tombol "Import" buat upload gambar.');
+      return;
+    }
 
     const folder = currentFolder || '';
     const fp = (folder ? folder + '/' : '') + raw;
@@ -859,7 +1045,7 @@
   });
 
   document.getElementById('btn-new-folder').addEventListener('click', () => {
-    let name = prompt('Nama folder baru:', 'utils');
+    let name = prompt('Nama folder baru:', '');
     if (name === null) return;
     name = name.trim().replace(/^\/+|\/+$/g, '');
     if (!name) return;
@@ -882,6 +1068,133 @@
     renderHome();
   });
 
+  function uniquePathAgainst(path, existingSet) {
+    if (!existingSet.has(path)) return path;
+    const idx = path.lastIndexOf('/');
+    const dir = idx === -1 ? '' : path.substring(0, idx + 1);
+    const base = idx === -1 ? path : path.substring(idx + 1);
+    const dotIdx = base.lastIndexOf('.');
+    const ext = dotIdx > 0 ? base.slice(dotIdx) : '';
+    const baseNoExt = dotIdx > 0 ? base.slice(0, dotIdx) : base;
+    let n = 2;
+    let candidate = dir + baseNoExt + ' (' + n + ')' + ext;
+    while (existingSet.has(candidate)) {
+      n++;
+      candidate = dir + baseNoExt + ' (' + n + ')' + ext;
+    }
+    return candidate;
+  }
+
+  async function importBatch(entries) {
+    const list0 = loadFilesIndex();
+    const allowed = MAX_FILES - list0.length;
+    if (allowed <= 0) {
+      alert('Sudah mencapai batas maksimal ' + MAX_FILES + ' file. Hapus beberapa dulu.');
+      return;
+    }
+    if (entries.length > allowed) {
+      if (!confirm('Ada ' + entries.length + ' file di dalamnya, tapi sisa slot cuma ' + allowed + '. Import ' + allowed + ' file pertama aja?')) return;
+    }
+
+    const basePrefix = currentFolder ? currentFolder + '/' : '';
+    const newList = loadFilesIndex();
+    const existingPaths = new Set(newList.map(fullPath));
+    const foldersSet = new Set(loadFoldersIndex());
+    let imported = 0;
+    let skipped = 0;
+
+    for (const entry of entries) {
+      if (imported >= allowed) break;
+      const relPath = entry.relPath.replace(/^\/+/, '');
+      if (!relPath) continue;
+      let targetPath = basePrefix + relPath;
+      targetPath = uniquePathAgainst(targetPath, existingPaths);
+      existingPaths.add(targetPath);
+      const parsed = parseFolderAndName(targetPath);
+
+      if (parsed.folder) {
+        let acc = '';
+        parsed.folder.split('/').forEach((seg) => {
+          acc = acc ? acc + '/' + seg : seg;
+          foldersSet.add(acc);
+        });
+      }
+
+      let content;
+      try {
+        content = await entry.readContent();
+      } catch (err) {
+        skipped++;
+        continue;
+      }
+
+      const id = genId();
+      newList.push({ id: id, name: parsed.name, folder: parsed.folder, createdAt: Date.now(), updatedAt: Date.now() });
+      localStorage.setItem(fileContentKey(id), content || '');
+      imported++;
+    }
+
+    saveFilesIndex(newList);
+    saveFoldersIndex(Array.from(foldersSet));
+    renderHome();
+    alert('Berhasil import ' + imported + ' file.' + (skipped ? ' (' + skipped + ' gagal dibaca)' : ''));
+  }
+
+  document.getElementById('btn-import-zip').addEventListener('click', () => {
+    document.getElementById('file-import-zip').click();
+  });
+  document.getElementById('file-import-zip').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (typeof JSZip === 'undefined') {
+      alert('JSZip belum termuat. Cek koneksi internet lalu refresh.');
+      return;
+    }
+    let zip;
+    try {
+      zip = await JSZip.loadAsync(file);
+    } catch (err) {
+      alert('Gagal baca ZIP: ' + err.message);
+      return;
+    }
+    const zipEntries = Object.keys(zip.files).map((k) => zip.files[k]).filter((en) => !en.dir);
+    if (!zipEntries.length) {
+      alert('ZIP ini kosong.');
+      return;
+    }
+    const entries = zipEntries.map((en) => ({
+      relPath: en.name,
+      readContent: async () => {
+        if (isImageName(en.name)) {
+          const base64 = await en.async('base64');
+          return 'data:' + guessMime(en.name) + ';base64,' + base64;
+        }
+        return en.async('string');
+      }
+    }));
+    await importBatch(entries);
+  });
+
+  document.getElementById('btn-import-folder').addEventListener('click', () => {
+    document.getElementById('file-import-folder').click();
+  });
+  document.getElementById('file-import-folder').addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    const entries = files.map((f) => ({
+      relPath: f.webkitRelativePath || f.name,
+      readContent: () => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target.result || '');
+        reader.onerror = () => reject(new Error('gagal baca'));
+        if (isImageName(f.name)) reader.readAsDataURL(f); else reader.readAsText(f);
+      })
+    }));
+    await importBatch(entries);
+  });
+
   document.getElementById('btn-download-all').addEventListener('click', async () => {
     const list = loadFilesIndex();
     if (!list.length) { alert('Belum ada file.'); return; }
@@ -889,7 +1202,11 @@
     const zip = new JSZip();
     list.forEach((f) => {
       const content = localStorage.getItem(fileContentKey(f.id));
-      zip.file(fullPath(f), content !== null ? content : '');
+      if (isImageName(f.name) && content && content.indexOf('base64,') !== -1) {
+        zip.file(fullPath(f), content.split('base64,')[1], { base64: true });
+      } else {
+        zip.file(fullPath(f), content !== null ? content : '');
+      }
     });
     try {
       const blob = await zip.generateAsync({ type: 'blob' });
@@ -911,9 +1228,9 @@
     const idx = path.lastIndexOf('/');
     const dir = idx === -1 ? '' : path.substring(0, idx + 1);
     const base = idx === -1 ? path : path.substring(idx + 1);
-    const extMatch = base.match(/\.(js|json)$/i);
-    const ext = extMatch ? extMatch[0] : '';
-    const baseNoExt = ext ? base.slice(0, -ext.length) : base;
+    const dotIdx = base.lastIndexOf('.');
+    const ext = dotIdx > 0 ? base.slice(dotIdx) : '';
+    const baseNoExt = dotIdx > 0 ? base.slice(0, dotIdx) : base;
     let n = 2;
     let candidate = dir + baseNoExt + ' (' + n + ')' + ext;
     while (pathExists(candidate)) {
@@ -923,11 +1240,31 @@
     return candidate;
   }
 
+  const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
+  const JSON_LIKE_EXTENSIONS = ['material']; // ekstensi non-.json yang strukturnya tetap JSON
+
+  function getExt(name) {
+    const m = name.match(/\.([a-z0-9]+)$/i);
+    return m ? m[1].toLowerCase() : '';
+  }
+  function isImageName(name) {
+    return IMAGE_EXTENSIONS.indexOf(getExt(name)) !== -1;
+  }
+  function guessMime(name) {
+    const map = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml' };
+    return map[getExt(name)] || 'application/octet-stream';
+  }
   function langForName(name) {
-    return /\.json$/i.test(name) ? 'json' : 'javascript';
+    const ext = getExt(name);
+    if (ext === 'js') return 'javascript';
+    if (ext === 'json' || JSON_LIKE_EXTENSIONS.indexOf(ext) !== -1) return 'json';
+    return 'plaintext';
   }
   function defaultContentFor(name) {
-    return langForName(name) === 'json' ? '{\n\t\n}' : defaultCode;
+    const lang = langForName(name);
+    if (lang === 'json') return '{\n\t\n}';
+    if (lang === 'javascript') return defaultCode;
+    return '';
   }
 
   document.getElementById('btn-import-js').addEventListener('click', () => {
@@ -950,26 +1287,31 @@
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      let name = file.name || 'imported.js';
-      if (!/\.(js|json)$/i.test(name)) name += '.js';
-      const folder = currentFolder || '';
-      let path = (folder ? folder + '/' : '') + name;
-      path = uniquePath(path);
-      const parsed = parseFolderAndName(path);
+    let name = file.name || 'imported';
+    const folder = currentFolder || '';
+    let path = (folder ? folder + '/' : '') + name;
+    path = uniquePath(path);
+    const parsed = parseFolderAndName(path);
 
-      const id = genId();
+    const id = genId();
+    const finish = (content) => {
       const newList = loadFilesIndex();
       newList.push({ id: id, name: parsed.name, folder: parsed.folder, createdAt: Date.now(), updatedAt: Date.now() });
       saveFilesIndex(newList);
-      localStorage.setItem(fileContentKey(id), ev.target.result || '');
+      localStorage.setItem(fileContentKey(id), content || '');
       openFile(id);
     };
-    reader.onerror = () => {
-      alert('Gagal membaca file.');
-    };
-    reader.readAsText(file);
+
+    const reader = new FileReader();
+    if (isImageName(name)) {
+      reader.onload = (ev) => finish(ev.target.result);
+      reader.onerror = () => alert('Gagal membaca file.');
+      reader.readAsDataURL(file);
+    } else {
+      reader.onload = (ev) => finish(ev.target.result);
+      reader.onerror = () => alert('Gagal membaca file.');
+      reader.readAsText(file);
+    }
   });
 
   document.getElementById('btn-home').addEventListener('click', () => {
@@ -999,10 +1341,36 @@
     loadFilesIndex().forEach((f) => { getOrCreateModelForFile(f.id); });
   }
 
+  function showImagePreview(meta) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('err-box').style.display = 'none';
+    document.getElementById('editor-container').style.display = 'none';
+    document.getElementById('actionbar').style.display = 'none';
+    document.getElementById('delbar').style.display = 'none';
+    document.getElementById('status').style.display = 'none';
+    const img = document.getElementById('image-preview-img');
+    img.src = localStorage.getItem(fileContentKey(meta.id)) || '';
+    document.getElementById('image-preview').style.display = 'flex';
+  }
+  function hideImagePreview() {
+    document.getElementById('image-preview').style.display = 'none';
+    document.getElementById('editor-container').style.display = '';
+    document.getElementById('actionbar').style.display = '';
+    document.getElementById('delbar').style.display = '';
+    document.getElementById('status').style.display = '';
+  }
+
   function openFile(id) {
     const meta = loadFilesIndex().find((f) => f.id === id);
+    if (!meta) return;
     currentFileId = id;
-    showEditorView(meta ? meta.name : id);
+    showEditorView(meta.name);
+
+    if (isImageName(meta.name)) {
+      showImagePreview(meta);
+      return;
+    }
+    hideImagePreview();
 
     ensureMonaco(() => {
       const model = getOrCreateModelForFile(id);
@@ -1305,21 +1673,41 @@
       { path: 'resource/block_culling/block_culling.json', match: '**/block_culling/*.json' },
       { path: 'resource/sounds/sound_definitions.json', match: '**/sound_definitions.json' },
       { path: 'resource/sounds/music_definitions.json', match: '**/music_definitions.json' },
-      { path: 'resource/entity/entity.json', match: '**/rp_entity/*.json' },
-      { path: 'resource/items/items.json', match: '**/rp_items/*.json' }
+      { path: 'resource/entity/entity.json', match: '**/entity/*.json' }
+      // Catatan: resource/items/items.json sengaja gak didaftarin - nama foldernya
+      // di Bedrock asli SAMA PERSIS dengan behavior/items ("items"), jadi gak
+      // bisa dibedain cuma dari nama folder di app ini. Kalau perlu autocomplete
+      // item resource pack, pisahin ke folder dengan nama unik (misal "items_rp").
     ];
+
+    const SCHEMA_CACHE_PREFIX = 'json_schema_cache:';
 
     Promise.allSettled(candidates.map((c) =>
       fetch(BASE + c.path).then((r) => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
-      }).then((schema) => ({ uri: BASE + c.path, match: c.match, schema: schema }))
+      }).then((schema) => {
+        try { localStorage.setItem(SCHEMA_CACHE_PREFIX + c.path, JSON.stringify(schema)); } catch (e) {}
+        return { uri: BASE + c.path, match: c.match, schema: schema, cached: false };
+      }).catch((err) => {
+        // Offline / gagal fetch - coba pakai salinan yang udah pernah kesimpen
+        // dari load online sebelumnya, biar autocomplete tetep jalan offline.
+        const cached = localStorage.getItem(SCHEMA_CACHE_PREFIX + c.path);
+        if (cached) {
+          try {
+            return { uri: BASE + c.path, match: c.match, schema: JSON.parse(cached), cached: true };
+          } catch (e2) { /* cache korup, lanjut throw di bawah */ }
+        }
+        throw err;
+      })
     )).then((results) => {
       const schemas = [];
       const failed = [];
+      const fromCache = [];
       results.forEach((res, i) => {
         if (res.status === 'fulfilled') {
           schemas.push({ uri: res.value.uri, fileMatch: [res.value.match], schema: res.value.schema });
+          if (res.value.cached) fromCache.push(res.value.match);
         } else {
           failed.push(candidates[i].path + ' (' + res.reason.message + ')');
         }
@@ -1331,6 +1719,7 @@
         schemas: schemas
       });
       console.log('[JSON schema] berhasil dimuat (' + schemas.length + '):', schemas.map((s) => s.fileMatch[0]));
+      if (fromCache.length) console.log('[JSON schema] dari cache offline:', fromCache);
       if (failed.length) console.warn('[JSON schema] gagal dimuat:', failed);
       jsonSchemaDebug = {
         status: 'done',
@@ -1736,16 +2125,16 @@
     const meta = list.find((f) => f.id === currentFileId);
     if (!meta) return;
 
-    const content = editor ? editor.getValue() : (localStorage.getItem(fileContentKey(meta.id)) || '');
-    const extMatch = meta.name.match(/\.(js|json)$/i);
-    const ext = extMatch ? extMatch[0] : '.js';
-    const baseName = ext ? meta.name.slice(0, -ext.length) : meta.name;
+    const content = (!isImageName(meta.name) && editor) ? editor.getValue() : (localStorage.getItem(fileContentKey(meta.id)) || '');
+    const ext = getExt(meta.name);
+    const dotExt = ext ? '.' + ext : '';
+    const baseName = ext ? meta.name.slice(0, -(ext.length + 1)) : meta.name;
     const folder = meta.folder || '';
 
-    let candidateName = baseName + ' copy' + ext;
+    let candidateName = baseName + ' copy' + dotExt;
     let n = 2;
     while (pathExists((folder ? folder + '/' : '') + candidateName)) {
-      candidateName = baseName + ' copy ' + n + ext;
+      candidateName = baseName + ' copy ' + n + dotExt;
       n++;
     }
 
@@ -1767,16 +2156,13 @@
     const meta = list.find((f) => f.id === currentFileId);
     if (!meta) return;
 
-    const currentExtMatch = meta.name.match(/\.(js|json)$/i);
-    const currentExt = currentExtMatch ? currentExtMatch[0] : '.js';
-    let raw = prompt('Nama baru untuk file ini (' + currentExt + ' otomatis ditambahkan):', meta.name.replace(/\.(js|json)$/i, ''));
+    let raw = prompt('Nama baru untuk file ini:', meta.name);
     if (raw === null) return;
     raw = raw.trim().replace(/\//g, '-');
     if (!raw) {
       alert('Nama tidak boleh kosong.');
       return;
     }
-    if (!/\.(js|json)$/i.test(raw)) raw += currentExt;
 
     const folder = meta.folder || '';
     const oldPath = fullPath(meta);
@@ -1806,19 +2192,26 @@
   bindTap(document.getElementById('btn-rename'), renameCurrentFile);
 
   document.getElementById('btn-download').addEventListener('click', () => {
-    if (!editor) return;
-    const content = editor.getValue();
     const meta = loadFilesIndex().find((f) => f.id === currentFileId);
-    const fileName = meta ? meta.name : 'main.js';
-    const blob = new Blob([content], { type: 'text/javascript' });
-    const url = URL.createObjectURL(blob);
+    if (!meta) return;
+    const fileName = meta.name;
+    let href, revoke = null;
+    if (isImageName(fileName)) {
+      href = localStorage.getItem(fileContentKey(meta.id)) || '';
+    } else {
+      if (!editor) return;
+      const content = editor.getValue();
+      const blob = new Blob([content], { type: 'text/plain' });
+      href = URL.createObjectURL(blob);
+      revoke = href;
+    }
     const a = document.createElement('a');
-    a.href = url;
+    a.href = href;
     a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (revoke) URL.revokeObjectURL(revoke);
   });
 
   document.getElementById('btn-reset').addEventListener('click', () => {
