@@ -12,12 +12,12 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<title>ScriptAPI Editor</title>
+<title>Monaco Editor</title>
 <style>
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; height: 100%;
-    background: #1e1e1e; color: #ddd;
+    background: #211f25; color: #ddd;
     font-family: Roboto, 'Segoe UI', Arial, sans-serif;
     overflow: hidden;
   }
@@ -157,7 +157,7 @@
     background: rgba(255, 255, 255, 0.18) !important;
   }
   .monaco-scrollable-element > .scrollbar > .slider:hover {
-    background: rgba(255, 255, 255, 0.28) !important;
+    background: rgba(255, 255, 255, 0.2784313725490196) !important;
   }
   #status {
     padding: 4px 10px; font-size: 10px; color: #888;
@@ -236,24 +236,48 @@
   }
   .ctx-item {
     display: flex; align-items: center; gap: 16px; padding: 15px 18px;
-    font-size: 14px; color: #eee;
+    font-size: 14px; color: #e0e3e3;
     user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
   }
   .ctx-item:active { background: #2a2a2c; }
   .ctx-icon { width: 20px; text-align: center; font-size: 15px; }
+
+  #update-banner {
+    display: none; position: fixed; left: 0; right: 0; bottom: 0;
+    align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: #a0ff49; color: #2a2100;
+    font: 14px/1.4 -apple-system, "Segoe UI", sans-serif;
+    z-index: 9999;
+  }
+  #update-banner span { flex: 1; }
+  #update-banner button {
+    font: inherit; font-weight: bold; padding: 8px 16px; border: 0;
+    border-radius: 8px; background: #2a2100; color: #08e517;
+  }
+  #offline-badge {
+    display: none; position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); right: 8px;
+    padding: 4px 10px; border-radius: 999px; background: #3a3a3a; color: #bbb;
+    font: 12px -apple-system, "Segoe UI", sans-serif; z-index: 9998;
+  }
 </style>
 </head>
 <body>
+<div id="offline-badge">Offline</div>
+<div id="update-banner">
+  <span>Versi baru tersedia.</span>
+  <button id="update-reload-btn">Muat ulang</button>
+</div>
 <div id="app">
 
   <div id="home-view">
     <div id="home-topbar">
       <div id="home-topbar-row">
         <button id="btn-folder-back" style="display:none;">← Home</button>
-        <h1 id="home-title">ScriptAPI Editor</h1>
+        <h1 id="home-title">Minecraft Edtior</h1>
       </div>
-      <p id="home-subtitle">File JavaScript kamu, tersimpan di HP.</p>
+      <p id="home-subtitle">Edit apapun tentang Minecraft disini.</p>
     </div>
     <div id="home-list"></div>
     <div id="paste-bar"></div>
@@ -275,11 +299,11 @@
     <div id="topbar">
       <button id="btn-home">← Home</button>
       <span id="current-filename">main.js</span>
+      <button id="btn-settings">Settings</button>
+      <button id="btn-download" class="primary">Download File</button>
       <button id="btn-duplicate">⧉ Duplikat</button>
       <button id="btn-rename">✎ Rename</button>
-      <button id="btn-download" class="primary">↓ .js</button>
       <button id="btn-reset">Reset</button>
-      <button id="btn-settings">Settings</button>
     </div>
     <div style="position: relative; flex: 1; min-height: 0;">
       <div id="loading">Memuat editor...</div>
@@ -346,10 +370,6 @@
 <div id="overlay">
   <div id="panel">
     <h2>Muat type definitions</h2>
-    <p>
-      Pilih file ZIP berisi folder @minecraft dari node_modules. Cukup sekali
-      saja, hasilnya tersimpan di HP dan tetap jalan offline setelahnya.
-    </p>
     <div id="file-drop">
       <label style="font-size:12px;color:#ccc;display:block;">File ZIP folder @minecraft</label>
       <input type="file" id="file-zip" accept=".zip" style="width:100%;" />
@@ -357,11 +377,8 @@
       <div id="zip-log" style="font-size:11px;color:#888;margin-top:8px;max-height:120px;overflow:auto;"></div>
     </div>
     <p>
-      Di terminal Acode, masuk ke folder node_modules lalu jalankan:
-      <code style="display:block;background:#1e1e1e;padding:6px;border-radius:4px;margin-top:4px;">zip -r minecraft-types.zip @minecraft</code>
-      Ini bikin file minecraft-types.zip berisi semua .d.ts di dalamnya
-      (server, common, vanilla-data, dan file pendukung lainnya). Pindahin
-      zip itu ke folder Download, lalu pilih di sini.
+      Masukan sebuah ZIP berisi node modules beserta
+      package-package dan file .d.ts-nya.
     </p>
     <div id="panel-actions">
       <button id="btn-cancel">Batal</button>
@@ -412,7 +429,7 @@
   const FONT_STYLE_KEY = 'mc-editor-font-style';
 
   const EDITOR_FONT = "'Roboto Mono', Consolas, monospace";
-  const MAX_FILES = 200;
+  const MAX_FILES = 500;
 
   let editor = null;
   let pendingZipTypes = null;
@@ -663,9 +680,9 @@
     const leaf = idx === -1 ? folderFullName : folderFullName.substring(idx + 1);
     const allNames = allFolderNamesSet();
     let n = 2;
-    let newFullName = (parent ? parent + '/' : '') + leaf + ' copy';
+    let newFullName = (parent ? parent + '/' : '') + leaf + ` (${n})`;
     while (allNames.has(newFullName)) {
-      newFullName = (parent ? parent + '/' : '') + leaf + ' copy ' + n;
+      newFullName = (parent ? parent + '/' : '') + leaf + ` (${n}) `;
       n++;
     }
 
@@ -888,8 +905,8 @@
     if (currentFolder === null) {
       backBtn.style.display = 'none';
       newFolderBtn.style.display = '';
-      titleEl.textContent = 'ScriptAPI Editor';
-      subtitleEl.textContent = 'File JavaScript kamu, tersimpan di HP.';
+      titleEl.textContent = 'Minecraft Editor';
+      subtitleEl.textContent = 'Buat apapun tentang Minecraft Add-On, Di mobile, Tanpa internet.';
 
       const explicitFolders = loadFoldersIndex();
       const fileFolders = allList.filter((f) => f.folder).map((f) => f.folder);
@@ -1527,7 +1544,7 @@
       automaticLayout: true,
       wordWrap: getWordWrap(),
       scrollBeyondLastLine: false,
-      tabSize: 1,
+      tabSize: 2,
       insertSpaces: true,
       accessibilitySupport: 'off',
       smoothScrolling: false,
@@ -1668,12 +1685,19 @@
       { path: 'resource/attachables/attachables.json', match: '**/attachables/*.json' },
       { path: 'resource/particles/particles.json', match: '**/particles/*.json' },
       { path: 'resource/render_controllers/render_controllers.json', match: '**/render_controllers/*.json' },
-      { path: 'resource/materials/materials.json', match: '**/materials/*.json' },
+      { path: 'resource/materials/materials.json', match: '**/materials/*.material' },
       { path: 'resource/fog/fog.json', match: '**/fog/*.json' },
       { path: 'resource/block_culling/block_culling.json', match: '**/block_culling/*.json' },
       { path: 'resource/sounds/sound_definitions.json', match: '**/sound_definitions.json' },
       { path: 'resource/sounds/music_definitions.json', match: '**/music_definitions.json' },
-      { path: 'resource/entity/entity.json', match: '**/entity/*.json' }
+      { path: 'resource/entity/entity.json', match: '**/entity/*.json' },
+      { path: 'general/manifest.json', match: '**/manifest.json' },
+      { path: 'resource/models/entity/model_entity.json', match: '**/models/**/*.json' },
+      { path: 'resource/textures/item_texture.json', match: '**/textures/item_texture.json' },
+      { path: 'resource/textures/flipbook_textures.json', match: '**/textures/flipbook_textures.json' },
+      { path: 'resource/textures/texture_set.json', match: '**/textures/*.texture_set.json' },
+      { path: 'resource/textures/terrain_texture.json', match: '**/textures/terrain_texture.json' },
+      { path: 'resource/textures/textures_list.json', match: '**/textures/textures_list.json' },
       // Catatan: resource/items/items.json sengaja gak didaftarin - nama foldernya
       // di Bedrock asli SAMA PERSIS dengan behavior/items ("items"), jadi gak
       // bisa dibedain cuma dari nama folder di app ini. Kalau perlu autocomplete
@@ -2022,12 +2046,13 @@
     if (jsonSchemaDebug.status === 'loading') {
       msg = 'Masih memuat schema (atau Monaco belum siap)... coba lagi sebentar.';
     } else {
-      msg = '✅ BERHASIL (' + jsonSchemaDebug.loaded.length + '):\n' +
-        (jsonSchemaDebug.loaded.length ? jsonSchemaDebug.loaded.join('\n') : '(kosong)') +
-        '\n\n❌ GAGAL (' + jsonSchemaDebug.failed.length + '):\n' +
-        (jsonSchemaDebug.failed.length ? jsonSchemaDebug.failed.join('\n') : '(kosong)');
+      msg = 'Berhasil (' + jsonSchemaDebug.loaded.length + '):\n' +
+        (jsonSchemaDebug.loaded.length ? jsonSchemaDebug.loaded.join('\n') : '') +
+        '\n\n Gagal (' + jsonSchemaDebug.failed.length + '):\n' +
+        (jsonSchemaDebug.failed.length ? jsonSchemaDebug.failed.join('\n') : '');
     }
     alert(msg);
+    console.warn(msg);
   });
 
   document.getElementById('btn-settings').addEventListener('click', () => {
@@ -2232,7 +2257,34 @@
       navigator.serviceWorker.register('service-worker.js').catch(() => {
       });
     });
+
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'sw-update-available') {
+        const banner = document.getElementById('update-banner');
+        if (banner) banner.style.display = 'flex';
+      }
+    });
+
+    // Cegah reload-loop kalau controller berganti berkali-kali dalam waktu singkat
+    let reloadedOnce = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloadedOnce) return;
+      reloadedOnce = true;
+    });
   }
+
+  const updateReloadBtn = document.getElementById('update-reload-btn');
+  if (updateReloadBtn) {
+    updateReloadBtn.addEventListener('click', () => location.reload());
+  }
+
+  function updateOfflineBadge() {
+    const badge = document.getElementById('offline-badge');
+    if (badge) badge.style.display = navigator.onLine ? 'none' : 'block';
+  }
+  window.addEventListener('online', updateOfflineBadge);
+  window.addEventListener('offline', updateOfflineBadge);
+  updateOfflineBadge();
 
   showHomeView();
 </script>
