@@ -1664,44 +1664,84 @@
 
   let jsonSchemaDebug = { status: 'loading', loaded: [], failed: [] };
 
+  // Beberapa schema (contoh: skema JSON UI dari KalmeMarq) ditulis dengan
+  // komentar gaya VS Code (JSONC), padahal JSON.parse() biasa gak terima
+  // komentar. Fungsi ini buang komentar // dan /* */ tanpa ganggu isi
+  // string (jadi "https://..." di dalam string gak ikut kepotong).
+  function stripJsonComments(text) {
+    let out = '';
+    let inString = false;
+    let inLineComment = false;
+    let inBlockComment = false;
+    let escaped = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const next = text[i + 1];
+      if (inLineComment) {
+        if (ch === '\n') { inLineComment = false; out += ch; }
+        continue;
+      }
+      if (inBlockComment) {
+        if (ch === '*' && next === '/') { inBlockComment = false; i++; }
+        continue;
+      }
+      if (inString) {
+        out += ch;
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; out += ch; continue; }
+      if (ch === '/' && next === '/') { inLineComment = true; i++; continue; }
+      if (ch === '/' && next === '*') { inBlockComment = true; i++; continue; }
+      out += ch;
+    }
+    // Sekalian buang trailing comma (",}" / ",]") yang juga sering
+    // muncul di file JSONC tapi bikin JSON.parse gagal.
+    return out.replace(/,(\s*[}\]])/g, '$1');
+  }
+
   function setupJsonSchemas() {
-    const BASE = 'https://raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/';
+    const BASE = 'https://';
     // Path & fileMatch di bawah dicocokin ke daftar resmi package types Blockception
     // (npmjs.com/package/minecraft-bedrock-json-types), bukan nebak lagi.
     const candidates = [
-      { path: 'behavior/entities/entities.json', match: '**/entities/*.json' },
-      { path: 'behavior/blocks/blocks.json', match: '**/blocks/*.json' },
-      { path: 'behavior/items/items.json', match: '**/items/*.json' },
-      { path: 'behavior/recipes/recipes.json', match: '**/recipes/*.json' },
-      { path: 'behavior/loot_tables/loot_tables.json', match: '**/loot_tables/*.json' },
-      { path: 'behavior/spawn_rules/spawn_rules.json', match: '**/spawn_rules/*.json' },
-      { path: 'behavior/trading/trading.json', match: '**/trading/*.json' },
-      { path: 'behavior/dialogue/dialogue.json', match: '**/dialogue/*.json' },
-      { path: 'behavior/feature_rules/feature_rules.json', match: '**/feature_rules/*.json' },
-      { path: 'behavior/features/features.json', match: '**/features/*.json' },
-      { path: 'behavior/biomes/biomes.json', match: '**/biomes/*.json' },
-      { path: 'behavior/animations/animations.json', match: '**/animations/*.json' },
-      { path: 'behavior/animation_controllers/animation_controller.json', match: '**/animation_controllers/*.json' },
-      { path: 'resource/attachables/attachables.json', match: '**/attachables/*.json' },
-      { path: 'resource/particles/particles.json', match: '**/particles/*.json' },
-      { path: 'resource/render_controllers/render_controllers.json', match: '**/render_controllers/*.json' },
-      { path: 'resource/materials/materials.json', match: '**/materials/*.material' },
-      { path: 'resource/fog/fog.json', match: '**/fog/*.json' },
-      { path: 'resource/block_culling/block_culling.json', match: '**/block_culling/*.json' },
-      { path: 'resource/sounds/sound_definitions.json', match: '**/sound_definitions.json' },
-      { path: 'resource/sounds/music_definitions.json', match: '**/music_definitions.json' },
-      { path: 'resource/entity/entity.json', match: '**/entity/*.json' },
-      { path: 'general/manifest.json', match: '**/manifest.json' },
-      { path: 'resource/models/entity/model_entity.json', match: '**/models/**/*.json' },
-      { path: 'resource/textures/item_texture.json', match: '**/textures/item_texture.json' },
-      { path: 'resource/textures/flipbook_textures.json', match: '**/textures/flipbook_textures.json' },
-      { path: 'resource/textures/texture_set.json', match: '**/textures/*.texture_set.json' },
-      { path: 'resource/textures/terrain_texture.json', match: '**/textures/terrain_texture.json' },
-      { path: 'resource/textures/textures_list.json', match: '**/textures/textures_list.json' },
-      // Catatan: resource/items/items.json sengaja gak didaftarin - nama foldernya
-      // di Bedrock asli SAMA PERSIS dengan behavior/items ("items"), jadi gak
-      // bisa dibedain cuma dari nama folder di app ini. Kalau perlu autocomplete
-      // item resource pack, pisahin ke folder dengan nama unik (misal "items_rp").
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/entities/entities.json', match: '**/entities/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/blocks/blocks.json', match: '**/blocks/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/items/items.json', match: '**/items/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/recipes/recipes.json', match: '**/recipes/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/loot_tables/loot_tables.json', match: '**/loot_tables/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/spawn_rules/spawn_rules.json', match: '**/spawn_rules/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/trading/trading.json', match: '**/trading/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/dialogue/dialogue.json', match: '**/dialogue/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/feature_rules/feature_rules.json', match: '**/feature_rules/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/features/features.json', match: '**/features/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/biomes/biomes.json', match: '**/biomes/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/animations/animations.json', match: '**/animations/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/behavior/animation_controllers/animation_controller.json', match: '**/animation_controllers/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/attachables/attachables.json', match: '**/attachables/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/particles/particles.json', match: '**/particles/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/render_controllers/render_controllers.json', match: '**/render_controllers/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/materials/materials.json', match: '**/materials/*.material' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/fog/fog.json', match: '**/fog/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/block_culling/block_culling.json', match: '**/block_culling/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/sounds/sound_definitions.json', match: '**/sound_definitions.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/sounds/music_definitions.json', match: '**/music_definitions.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/entity/entity.json', match: '**/entity/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/general/manifest.json', match: '**/manifest.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/models/entity/model_entity.json', match: '**/models/**/*.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/textures/item_texture.json', match: '**/textures/item_texture.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/textures/flipbook_textures.json', match: '**/textures/flipbook_textures.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/textures/texture_set.json', match: '**/textures/*.texture_set.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/textures/terrain_texture.json', match: '**/textures/terrain_texture.json' },
+      { path: 'raw.githubusercontent.com/Blockception/Minecraft-bedrock-json-schemas/main/resource/textures/textures_list.json', match: '**/textures/textures_list.json' },
+      // JSON UI (beda sumber - KalmeMarq/Bugrock, isinya JSONC makanya dibersihin dulu
+      // lewat stripJsonComments sebelum di-JSON.parse).
+      { path: 'kalmemarq.github.io/Bugrock-JSON-UI-Schemas/ui.schema.json', match: ['**/ui/**/*.json', '!**/ui/_global_variables.json', '!**/ui/_ui_defs.json'] },
+      { path: 'kalmemarq.github.io/Bugrock-JSON-UI-Schemas/ui.sprite.schema.json', match: '**/ui/textures/**/*.json' },
+      { path: 'kalmemarq.github.io/Bugrock-JSON-UI-Schemas/ui_defs.schema.json', match: '**/ui/_ui_defs.json' },
+      { path: 'kalmemarq.github.io/Bugrock-JSON-UI-Schemas/global_variables.schema.json', match: '**/ui/_global_variables.json' }
     ];
 
     const SCHEMA_CACHE_PREFIX = 'json_schema_cache:';
@@ -1709,8 +1749,9 @@
     Promise.allSettled(candidates.map((c) =>
       fetch(BASE + c.path).then((r) => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      }).then((schema) => {
+        return r.text();
+      }).then((text) => {
+        const schema = JSON.parse(stripJsonComments(text));
         try { localStorage.setItem(SCHEMA_CACHE_PREFIX + c.path, JSON.stringify(schema)); } catch (e) {}
         return { uri: BASE + c.path, match: c.match, schema: schema, cached: false };
       }).catch((err) => {
@@ -1730,8 +1771,9 @@
       const fromCache = [];
       results.forEach((res, i) => {
         if (res.status === 'fulfilled') {
-          schemas.push({ uri: res.value.uri, fileMatch: [res.value.match], schema: res.value.schema });
-          if (res.value.cached) fromCache.push(res.value.match);
+          const fileMatch = Array.isArray(res.value.match) ? res.value.match : [res.value.match];
+          schemas.push({ uri: res.value.uri, fileMatch: fileMatch, schema: res.value.schema });
+          if (res.value.cached) fromCache.push(fileMatch[0]);
         } else {
           failed.push(candidates[i].path + ' (' + res.reason.message + ')');
         }
