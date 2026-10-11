@@ -1,7 +1,7 @@
 {
-  "name": "MC Script Editor",
-  "short_name": "MC Editor",
-  "description": "Editor JavaScript offline dengan autocomplete @minecraft/server",
+  "name": "ScriptAPI Editor",
+  "short_name": "SE",
+  "description": "Editor JavaScript offline dengan autocomplete dari Monaco",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
