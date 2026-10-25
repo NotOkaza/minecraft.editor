@@ -1082,7 +1082,7 @@
         <div id="home-menu-wrap"><button id="btn-home-menu" aria-label="Menu" aria-haspopup="true">⋮</button>
           <div id="home-menu-list"><button id="btn-open-device">Buka File</button> <button id="btn-open-folder">Buka
               Folder</button> <button id="btn-import-js">Import</button> <button id="btn-import-zip">Import ZIP</button>
-            <button id="btn-import-folder">Import Folder</button> <button id="btn-download-all">Download All</button>
+            <button id="btn-import-folder">Import Folder</button> <button id="btn-download-all">Download All</button> <button id="btn-check-all">Cek Semua</button>
           </div>
         </div>
       </div>
@@ -1783,7 +1783,7 @@ function buildFileIcon(fileName){
 	});
 	return iconImage;
 }
-
+// ---- Color picker khusus JSON: klik kotak warna di kiri kode hex ("#333", "#ffffff") ----
 const SAVED_COLORS_KEY="mc-editor-saved-colors";
 const hexColorStyleClasses=new Set();
 let hexColorEntries=[];
@@ -1843,7 +1843,7 @@ function rgbToHsv(red,green,blue){
 	return {hue,saturation:maximum?delta/maximum:0,value:maximum};
 }
 
-
+// ---- kotak warna kecil di kiri kode hex (selalu ada di JSON, dengan atau tanpa schema) ----
 function swatchClassForHex(hexText){
 	const color=parseHexColor(hexText);
 	const channels=[color.red,color.green,color.blue].map(channel=>channel.toString(16).padStart(2,"0")).join("");
@@ -1890,7 +1890,7 @@ function scheduleHexColorRefresh(delay){
 	hexColorRefreshTimer=setTimeout(refreshHexColorDecorations,delay);
 }
 
-
+// ---- warna tersimpan (localStorage), otomatis bertambah kalau 2 detik tidak ada perubahan ----
 function loadSavedColors(){
 	try{return JSON.parse(localStorage.getItem(SAVED_COLORS_KEY)||"[]")}catch(error){return []}
 }
@@ -1928,7 +1928,7 @@ function commitSavedColor(){
 	if(colorPickerState) addSavedColor(currentPickerHex());
 }
 
-
+// ---- panel picker ----
 function currentPickerRgb(){
 	return hsvToRgb(colorPickerState.hue,colorPickerState.saturation,colorPickerState.value);
 }
@@ -1991,7 +1991,7 @@ function setPickerColor(color,source){
 	if(color.alpha!==undefined) colorPickerState.alpha=color.alpha;
 	applyPickerState(source);
 }
-
+// Perbarui tampilan panel dan tulis hex baru ke JSON; `source` = bagian yang sedang diubah user (tidak ditimpa)
 function applyPickerState(source){
 	const [red,green,blue]=currentPickerRgb();
 	const hexText=currentPickerHex();
@@ -2046,7 +2046,7 @@ function closeColorPicker(){
 	colorPickerState=null;
 	editor.pushUndoStop();
 }
-
+// Di layar sentuh Monaco tidak meneruskan ketukan ke onMouseDown, jadi ketukan dideteksi sendiri lewat pointer events
 function openColorPickerAtPoint(clientX,clientY){
 	const target=editor.getTargetAtClientPoint(clientX,clientY);
 	const position=target&&target.position;
@@ -2089,7 +2089,15 @@ function setupJsonColorPicker(){
 function registerTypes(e){try{let t=0;for(const n in e)addExtraLibBoth(e[n],"file:///node_modules/"+n),t++;return t}catch(e){return alert("Gagal memuat types: "+e.message),0}}function updateStatus(e){document.getElementById("status").textContent=e?e+" Autocomplete aktif. siap dipakai offline.":'Belum ada types. Tekan titik tiga, lalu ke settings, types'}function logZip(e){const t=document.getElementById("zip-log");t.textContent+=e+"\n",t.scrollTop=t.scrollHeight}function normalizeZipPath(e){const t=e.indexOf("node_modules/");if(-1!==t)return e.substring(t+13);const n=e.indexOf("@minecraft/");return-1!==n?e.substring(n):e.replace(/^\/+/,"")}function slimPackageJson(e,t){if(!/package\.json$/i.test(e))return t;try{const e=JSON.parse(t.replace(/^\uFEFF/,"")),n={};return["name","version","type","types","typings","main","module","exports","typesVersions"].forEach(t=>{t in e&&(n[t]=e[t])}),JSON.stringify(n)}catch(e){return t}}function mapZipPaths(e){let t=null;const n=e.find(e=>"package.json"===e.raw);if(n)try{t=JSON.parse(n.content.replace(/^\uFEFF/,"")).name||null}catch(e){}const o=e.map(e=>({path:!/node_modules\/|@minecraft\//.test(e.raw)&&t?t+"/"+e.raw:normalizeZipPath(e.raw),content:slimPackageJson(e.raw,e.content)})),a=new Map(o.map(e=>[e.path,e.content]));return o.slice().forEach(e=>{if(!/(^|\/)package\.json$/.test(e.path))return;let t;try{t=JSON.parse(e.content)}catch(e){return}const n=e.path.slice(0,-12);if(a.has(n+"index.d.ts"))return;const r=[],i=e=>{e&&"object"==typeof e&&("string"==typeof e.types&&r.push(e.types),["import","default","require"].forEach(t=>i(e[t])))};i(t.exports&&"object"==typeof t.exports&&t.exports["."]?t.exports["."]:t.exports),"string"==typeof t.types&&r.push(t.types),"string"==typeof t.typings&&r.push(t.typings);let s=null;for(const e of r){const t=e.replace(/^\.\//,"").replace(/\.(m|c)?js$/,""),o=/\.d\.ts$/.test(t)?t:t+".d.ts";if(a.has(n+o)){s=o;break}}if(!s)return;const l=a.get(n+s),d=JSON.stringify("./"+s.replace(/\.d\.ts$/,""));let c;if(/\bexport\s*=/.test(l))c="import _m = require("+d+");\nexport = _m;\n";else if(/^\s*(export|import)\b/m.test(l))c="export * from "+d+";\n"+(/\bexport\s+default\b/.test(l)?"export { default } from "+d+";\n":"");else{const e=l.match(/\bdeclare\s+namespace\s+([A-Za-z_$][\w$]*)/);if(!e)return;c="/// <reference path="+JSON.stringify("./"+s)+" />\nexport = "+e[1]+";\n"}o.push({path:n+"index.d.ts",content:c}),a.set(n+"index.d.ts",c)}),o}function getWordWrap(){return localStorage.getItem(WRAP_KEY)||"on"}function updateWrapButton(){const e=document.getElementById("btn-wrap"),t="on"===getWordWrap();e.classList.toggle("primary",t),e.textContent=t?"On":"Off"}function getSelectedOrAllText(){const e=editor.getSelection(),t=editor.getModel();return e&&!e.isEmpty()?t.getValueInRange(e):t.getValue()}function writeClipboard(e){navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(e).catch(()=>fallbackCopy(e)):fallbackCopy(e)}function fallbackCopy(e){const t=document.createElement("textarea");t.value=e,t.style.position="fixed",t.style.opacity="0",document.body.appendChild(t),t.focus(),t.select();try{document.execCommand("copy")}catch(e){}document.body.removeChild(t)}function copyAction(){writeClipboard(getSelectedOrAllText())}function cutAction(){const e=editor.getSelection(),t=editor.getModel();e&&!e.isEmpty()?(writeClipboard(t.getValueInRange(e)),editor.executeEdits("cut",[{range:e,text:""}])):writeClipboard(t.getValue())}function pasteAction(){navigator.clipboard&&navigator.clipboard.readText?navigator.clipboard.readText().then(e=>{const t=editor.getSelection();editor.executeEdits("paste",[{range:t,text:e}])}).catch(()=>{alert("Gagal ambil clipboard otomatis. Coba tempel manual lewat tombol paste keyboard.")}):alert("Browser tidak mendukung baca clipboard otomatis. Coba tempel manual lewat tombol paste keyboard.")}function bindHoldRepeat(e,t){let n=null,o=null,a=!1;function r(r){a||(a=!0,e.classList.add("pressed"),t(),n=setTimeout(()=>{o=setInterval(t,60)},400),r.preventDefault())}function i(){a&&(a=!1,e.classList.remove("pressed"),clearTimeout(n),clearInterval(o),n=null,o=null)}e.addEventListener("touchstart",r,{passive:!1}),e.addEventListener("mousedown",r),e.addEventListener("touchend",i),e.addEventListener("touchcancel",i),e.addEventListener("mouseup",i),e.addEventListener("mouseleave",i)}function bindTap(e,t){let n=0;const o=o=>{const a=Date.now();e.classList.add("pressed"),setTimeout(()=>e.classList.remove("pressed"),120),o.preventDefault(),a-n<200||(n=a,t())};e.addEventListener("touchstart",o,{passive:!1}),e.addEventListener("mousedown",o)}bindTap(document.getElementById("btn-save"),saveCurrentFile),document.getElementById("btn-open-device").addEventListener("click",openDeviceFile),document.getElementById("btn-auto-format").addEventListener("click",()=>{localStorage.setItem(AUTOFORMAT_KEY,getAutoFormat()?"off":"on"),updateAutoFormatButton()}),updateAutoFormatButton(),bindClick("btn-menu",e=>{e.stopPropagation(),document.getElementById("menu-list").classList.toggle("show")}),bindClick("menu-list",closeMenu),["btn-duplicate","btn-rename"].forEach(e=>{const t=document.getElementById(e);t.addEventListener("mousedown",()=>setTimeout(closeMenu,0)),t.addEventListener("touchstart",()=>setTimeout(closeMenu,0),{passive:!0})}),document.addEventListener("click",e=>{e.target.closest("#menu-wrap")||closeMenu()}),document.addEventListener("keydown",e=>{"Escape"===e.key&&closeMenu()}),document.getElementById("btn-types").addEventListener("click",()=>{document.getElementById("settings-overlay").classList.remove("show"),document.getElementById("overlay").classList.add("show")}),document.getElementById("btn-cancel").addEventListener("click",()=>{document.getElementById("overlay").classList.remove("show")}),document.getElementById("file-zip").addEventListener("change",e=>{const t=e.target.files[0],n=document.getElementById("fname-zip");if(document.getElementById("zip-log").textContent="",!t)return n.textContent="Belum dipilih",void n.classList.remove("picked");n.textContent=t.name+" - "+Math.round(t.size/1024)+" KB (membaca...)",n.classList.add("picked"),"undefined"!=typeof JSZip?t.arrayBuffer().then(e=>JSZip.loadAsync(e)).then(e=>{const t=[];e.forEach((e,n)=>{!n.dir&&(/\.d\.ts$/i.test(e)||/(^|\/)package\.json$/i.test(e))&&t.push({path:e,entry:n})});const n=t.filter(e=>/\.d\.ts$/i.test(e.path)).map(e=>e.path);return t.splice(0,t.length,...t.filter(e=>/\.d\.ts$/i.test(e.path)||n.some(t=>t.startsWith(e.path.slice(0,-12))))),0===t.length?(logZip("Tidak ada file .d.ts ditemukan di dalam ZIP ini."),null):(logZip("Ditemukan "+t.length+" file .d.ts, membaca isinya..."),Promise.all(t.map(e=>e.entry.async("string").then(t=>({raw:e.path,content:t})))).then(mapZipPaths))}).then(e=>{if(!e)return;const o={};e.forEach(e=>{o[e.path]=e.content,logZip("  + "+e.path)}),pendingZipTypes=o,logZip("Selesai. Tekan Simpan untuk mengaktifkan."),n.textContent=t.name+" - "+e.length+" file .d.ts siap disimpan"}).catch(e=>{logZip("Gagal membaca ZIP: "+e.message)}):logZip("Gagal: library JSZip tidak termuat (cek koneksi internet saat pertama kali buka halaman ini).")}),document.getElementById("btn-save-types").addEventListener("click",()=>{if(!editor)return void alert("Buka salah satu file dulu sebelum atur types.");if(!pendingZipTypes){const t=localStorage.getItem(TYPES_KEY);if(t)try{return updateStatus(registerTypes(JSON.parse(t))),void document.getElementById("overlay").classList.remove("show")}catch(e){}return void alert("Pilih file ZIP dulu sebelum menyimpan.")}try{localStorage.setItem(TYPES_KEY,JSON.stringify(pendingZipTypes))}catch(e){alert("Types terlalu besar untuk disimpan permanen (batas localStorage sekitar 5MB): "+e.message+". Types tetap aktif sampai halaman ditutup.")}const e=registerTypes(pendingZipTypes);e&&(updateStatus(e),document.getElementById("overlay").classList.remove("show"))}),document.getElementById("btn-copy").addEventListener("click",()=>{if(!editor)return;copyAction();const e=document.getElementById("btn-copy"),t=e.textContent;e.textContent="Tersalin!",setTimeout(()=>{e.textContent=t},1e3)}),bindHoldRepeat(document.getElementById("btn-del-char"),()=>{editor&&editor.trigger("toolbar","deleteLeft",null)}),bindHoldRepeat(document.getElementById("btn-del-word"),()=>{editor&&editor.trigger("toolbar","deleteWordLeft",null)}),bindTap(document.getElementById("btn-wrap"),()=>{if(!editor)return;const e="on"===getWordWrap()?"off":"on";localStorage.setItem(WRAP_KEY,e),editor.updateOptions({wordWrap:e}),updateWrapButton()}),document.getElementById("btn-check-schema").addEventListener("click",()=>{let e="";e="loading"===jsonSchemaDebug.status?"Masih memuat schema (atau Monaco belum siap)... coba lagi sebentar.":"Berhasil ("+jsonSchemaDebug.loaded.length+"):\n"+(jsonSchemaDebug.loaded.length?jsonSchemaDebug.loaded.join("\n"):"")+"\n\n Gagal ("+jsonSchemaDebug.failed.length+"):\n"+(jsonSchemaDebug.failed.length?jsonSchemaDebug.failed.join("\n"):""),alert(e),console.warn(e)}),document.getElementById("btn-reload-schema").addEventListener("click",async()=>{if("undefined"==typeof monaco||!jsonApi())return void alert("Monaco belum siap. Buka satu file dulu, baru coba lagi.");const e=document.getElementById("btn-reload-schema"),t=e.textContent;e.disabled=!0,e.textContent="Reloading...",jsonSchemaDebug={status:"loading",loaded:[],failed:[]};try{await setupJsonSchemas(),alert("Reload selesai.\nBerhasil: "+jsonSchemaDebug.loaded.length+"\nGagal: "+jsonSchemaDebug.failed.length)}catch(e){alert("Gagal reload schema: "+(e&&e.message?e.message:e))}finally{e.disabled=!1,e.textContent=t}});let suggestWidgetVisible=!1;function hideSuggestWidgetNow(){editor&&editor.trigger("keyboard","hideSuggestWidget",{}),suggestWidgetVisible=!1}function isSuggestionWidgetEvent(e){return("function"==typeof e.composedPath?e.composedPath():[]).some(e=>e&&1===e.nodeType&&e.classList&&e.classList.contains("suggest-widget"))}document.getElementById("btn-show-suggestion").addEventListener("click",()=>{editor&&(suggestWidgetVisible?hideSuggestWidgetNow():(editor.focus(),editor.trigger("keyboard","editor.action.triggerSuggest",{}),suggestWidgetVisible=!0))}),document.addEventListener("click",e=>{if(!suggestWidgetVisible)return;const t=document.getElementById("btn-show-suggestion");t&&t.contains(e.target)||e.target.closest&&e.target.closest(".suggest-widget")||hideSuggestWidgetNow()}),window.addEventListener("pointerdown",e=>{if(!suggestWidgetVisible||!editor)return;const t=document.getElementById("btn-show-suggestion");("function"==typeof e.composedPath?e.composedPath():[]).includes(t)||isSuggestionWidgetEvent(e)||hideSuggestWidgetNow()},!0),document.addEventListener("keydown",e=>{"Escape"===e.key&&(suggestWidgetVisible=!1)});let prettyPrintSnapshot=null,suppressPrettyPrintReset=!1;function setPrettyPrintButtonState(e){const t=document.getElementById("btn-pretty-print");t&&(t.textContent=e?"Un-format":"Format")}function updateUndoRedoButtons(){const e=document.getElementById("btn-undo"),t=document.getElementById("btn-redo");if(!editor)return e.disabled=!0,void(t.disabled=!0);const n=editor.getModel(),o=!n||"function"!=typeof n.canUndo||n.canUndo(),a=!n||"function"!=typeof n.canRedo||n.canRedo();e.disabled=!o,t.disabled=!a}function doUndo(){editor&&(editor.trigger("keyboard","undo",null),updateUndoRedoButtons())}function doRedo(){editor&&(editor.trigger("keyboard","redo",null),updateUndoRedoButtons())}function duplicateCurrentFile(){if(!currentFileId)return void alert("Buka salah satu file dulu.");const e=loadFilesIndex();if(e.length>=1e3)return void alert("Maksimal 1000 file. Hapus salah satu dulu.");const t=e.find(e=>e.id===currentFileId);if(!t)return;const n=!isBinaryMediaName(t.name)&&editor?editor.getValue():readFileContent(t.id)||"",o=getExt(t.name),a=o?"."+o:"",r=o?t.name.slice(0,-(o.length+1)):t.name,i=t.folder||"";let s=r+" copy"+a,l=2;for(;pathExists((i?i+"/":"")+s);)s=r+" copy "+l+a,l++;const d=genId(),c=loadFilesIndex();c.push({id:d,name:s,folder:i,createdAt:Date.now(),updatedAt:Date.now()}),saveFilesIndex(c),writeFileContent(d,n),openFile(d)}function renameCurrentFile(){if(!currentFileId)return void alert("Buka salah satu file dulu.");const e=loadFilesIndex(),t=e.find(e=>e.id===currentFileId);if(!t)return;let n=prompt("Nama baru untuk file ini:",t.name);if(null===n)return;if(n=n.trim().replace(/\//g,"-"),!n)return void alert("Nama tidak boleh kosong.");const o=t.folder||"",a=fullPath(t),r=(o?o+"/":"")+n;if(r!==a&&pathExists(r))return void alert("Sudah ada file dengan nama itu di folder yang sama.");if(r===a)return;t.name=n,t.updatedAt=Date.now(),saveFilesIndex(e),openModels[t.id]&&(openModels[t.id].dispose(),delete openModels[t.id]);const i=getOrCreateModelForFile(t.id);editor&&i&&editor.setModel(i),document.getElementById("current-filename").textContent=n,updateUndoRedoButtons()}if(document.getElementById("btn-pretty-print").addEventListener("click",()=>{if(!editor)return;if(editor.focus(),prettyPrintSnapshot&&prettyPrintSnapshot.fileId===currentFileId){const e=editor.getModel().getFullModelRange();return suppressPrettyPrintReset=!0,editor.executeEdits("pretty-print-revert",[{range:e,text:prettyPrintSnapshot.content}]),suppressPrettyPrintReset=!1,prettyPrintSnapshot=null,void setPrettyPrintButtonState(!1)}const e=editor.getAction("editor.action.formatDocument");e?(prettyPrintSnapshot={fileId:currentFileId,content:editor.getValue()},suppressPrettyPrintReset=!0,e.run().then(()=>{suppressPrettyPrintReset=!1,setPrettyPrintButtonState(!0)})):alert("Formatter belum siap untuk file ini.")}),document.getElementById("btn-settings").addEventListener("click",()=>{document.getElementById("settings-overlay").classList.add("show")}),document.getElementById("btn-settings-close").addEventListener("click",()=>{document.getElementById("settings-overlay").classList.remove("show")}),document.getElementById("settings-overlay").addEventListener("click",e=>{e.target===e.currentTarget&&e.currentTarget.classList.remove("show")}),document.getElementById("font-style-select").addEventListener("change",e=>{"Roboto Mono"!==e.target.value&&(e.target.value="Roboto Mono"),localStorage.setItem(FONT_STYLE_KEY,"Roboto Mono"),applyFontStyle()}),bindHoldRepeat(document.getElementById("btn-left"),()=>{editor&&editor.trigger("toolbar","cursorLeft",null)}),bindHoldRepeat(document.getElementById("btn-right"),()=>{editor&&editor.trigger("toolbar","cursorRight",null)}),bindHoldRepeat(document.getElementById("btn-up"),()=>{editor&&editor.trigger("toolbar","cursorUp",null)}),bindHoldRepeat(document.getElementById("btn-down"),()=>{editor&&editor.trigger("toolbar","cursorDown",null)}),bindTap(document.getElementById("btn-undo"),doUndo),bindTap(document.getElementById("btn-redo"),doRedo),document.addEventListener("keydown",e=>{if(!editor)return;if(!e.ctrlKey&&!e.metaKey)return;const t=e.key.toLowerCase();"z"!==t||e.shiftKey?"y"===t&&(e.preventDefault(),doRedo()):(e.preventDefault(),doUndo())}),bindTap(document.getElementById("btn-duplicate"),duplicateCurrentFile),bindTap(document.getElementById("btn-rename"),renameCurrentFile),document.getElementById("btn-download").addEventListener("click",()=>{const e=loadFilesIndex().find(e=>e.id===currentFileId);if(!e)return;const t=e.name;let n,o=null;if(isBinaryMediaName(t))n=readFileContent(e.id)||"";else{if(!editor)return;const e=editor.getValue(),t=new Blob([e],{type:"text/plain"});n=URL.createObjectURL(t),o=n}const a=document.createElement("a");a.href=n,a.download=t,document.body.appendChild(a),a.click(),document.body.removeChild(a),o&&URL.revokeObjectURL(o)}),document.getElementById("btn-reset").addEventListener("click",()=>{confirm("Hapus SEMUA file, types, dan pengaturan? Tidak bisa dibatalkan.")&&(loadFilesIndex().forEach(e=>removeFileContent(e.id)),localStorage.removeItem(FILES_INDEX_KEY),localStorage.removeItem(FOLDERS_INDEX_KEY),localStorage.removeItem(TYPES_KEY),localStorage.removeItem(WRAP_KEY),localStorage.removeItem(FONT_STYLE_KEY),localStorage.removeItem(OLD_CODE_KEY),location.reload())}),"serviceWorker"in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("service-worker.js").catch(()=>{})}),navigator.serviceWorker.addEventListener("message",e=>{if(e.data&&"sw-update-available"===e.data.type){const e=document.getElementById("update-banner");e&&(e.style.display="flex")}});let e=!1;navigator.serviceWorker.addEventListener("controllerchange",()=>{e||(e=!0)})}const updateReloadBtn=document.getElementById("update-reload-btn");function updateOfflineBadge(){const e=document.getElementById("offline-badge");e&&(e.style.display=navigator.onLine?"none":"block")}updateReloadBtn&&updateReloadBtn.addEventListener("click",()=>location.reload()),window.addEventListener("online",updateOfflineBadge),window.addEventListener("offline",updateOfflineBadge),updateOfflineBadge(),showHomeView()</script>
 
 <script>
+// ================= NPM: types otomatis + autocomplete package.json =================
+// - import "paket" di file JS/TS -> .d.ts diambil dari npm (via jsDelivr), versi mengikuti package.json di project (atau latest)
+// - kalau paket tidak punya types sendiri -> coba @types/<paket>
+// - dependency types (import di dalam .d.ts) ikut dimuat otomatis
+// - semua di-cache di IndexedDB, jadi bisa dipakai offline setelah pernah dimuat
+// - autocomplete nama paket di string import, dan nama + versi (terbaru dulu) di package.json
 const NPM_DB_NAME = "mc-editor-npm";
+// false = types TIDAK diunduh otomatis dari npm; hanya dari ZIP (Settings > Types) atau folder/project (package.json + .d.ts, atau node_modules).
+const NPM_AUTO_FETCH_TYPES = false;
 const NPM_TTL_MS = 3600000;
 const NPM_RETRY_MS = 30000;
 const NPM_MAX_PACKAGES = 40;
@@ -2114,7 +2122,7 @@ const npmState = {
 };
 let npmDbPromise = null;
 
-
+// ---------- cache (IndexedDB) ----------
 function npmOpenDb() {
 	if (!npmDbPromise) {
 		npmDbPromise = new Promise((resolve, reject) => {
@@ -2155,7 +2163,7 @@ function npmSleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-
+// ---------- nama paket & range ----------
 function npmPackageName(specifier) {
 	if (!specifier || /^(\.|\/|[a-z][a-z0-9+.-]*:)/i.test(specifier)) return null;
 	const parts = specifier.split("/");
@@ -2189,7 +2197,7 @@ function npmCompareVersions(first, second) {
 	return 0;
 }
 
-
+// ---------- baca package.json di project ----------
 function npmCollectManifests() {
 	const depsByDir = new Map();
 	monaco.editor.getModels().forEach(model => {
@@ -2215,7 +2223,7 @@ function npmRangeFor(depsByDir, modelPath, name) {
 	return best ? npmCleanRange(best.range) : "latest";
 }
 
-
+// ---------- kumpulkan import bare dari semua file JS/TS ----------
 function npmCollectTop() {
 	const depsByDir = npmCollectManifests();
 	const wanted = new Map();
@@ -2231,7 +2239,7 @@ function npmCollectTop() {
 	});
 	return wanted;
 }
-
+// paket yang sudah disediakan lewat ZIP types (Settings > Types) tidak diambil ulang dari npm
 function npmZipProvided() {
 	const found = new Set();
 	const libs = tsApi().typescriptDefaults.getExtraLibs();
@@ -2247,7 +2255,7 @@ function npmZipProvided() {
 	return found;
 }
 
-
+// ---------- ambil dari jsDelivr ----------
 async function npmResolve(name, range) {
 	if (/^\d+\.\d+\.\d+(?:[-+][\w.+-]*)?$/.test(range)) return range;
 	const key = "spec:" + name + "@" + range;
@@ -2317,7 +2325,7 @@ async function npmFetchPackage(name, version) {
 	if (!failedCount) await npmCachePut(key, record);
 	return record;
 }
-
+// import di dalam .d.ts -> paket lain yang juga perlu types
 function npmScanImports(files) {
 	const found = new Set();
 	const importPattern = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)(["'])([^"'\n]+)\1/g;
@@ -2390,7 +2398,7 @@ function npmDisposeLib(lib) {
 	lib.uris = [];
 }
 
-
+// ---------- sinkronisasi ----------
 async function npmSync() {
 	if (npmState.running) {
 		npmState.again = true;
@@ -2405,7 +2413,7 @@ async function npmSync() {
 			} catch (error) {
 				console.warn("[NPM] paket lokal gagal:", error);
 			}
-			const wanted = npmCollectTop();
+			const wanted = NPM_AUTO_FETCH_TYPES ? npmCollectTop() : new Map();
 			const zipProvided = npmZipProvided();
 			const now = Date.now();
 			const retryDue = Array.from(npmState.libs.values()).some(lib => lib.status === "error" && now - lib.failedAt > NPM_RETRY_MS);
@@ -2477,12 +2485,7 @@ async function npmSync() {
 				}
 			}
 
-			if (loaded.length) {
-				const labels = loaded.slice(0, 3).map(lib => lib.name + "@" + lib.version + (lib.typesFrom ? " (types: " + lib.typesFrom + ")" : lib.status === "untyped" ? " (tanpa types)" : ""));
-				showToast("NPM: " + labels.join(", ") + (loaded.length > 3 ? " +" + (loaded.length - 3) + " lagi" : ""));
-			} else if (failed.length) {
-				showToast("NPM gagal: " + failed[0].name + " - " + failed[0].error);
-			}
+			failed.forEach(lib => console.warn("[NPM] gagal memuat " + lib.name + ": " + lib.error));
 		} while (npmState.again);
 	} catch (error) {
 		console.warn("[NPM] sync gagal:", error);
@@ -2495,13 +2498,10 @@ function scheduleNpmSync(delay) {
 	npmState.syncTimer = setTimeout(npmSync, delay == null ? 1200 : delay);
 }
 
-
+// ---------- autocomplete nama paket di string import ----------
 let npmWarnAt = 0;
 function npmWarn(what, error) {
 	console.warn("[NPM] gagal " + what + ":", error);
-	if (Date.now() - npmWarnAt < 5000) return;
-	npmWarnAt = Date.now();
-	showToast("NPM gagal " + what + ": " + ((error && error.message) || error));
 }
 async function npmSearch(query) {
 	const key = query.toLowerCase();
@@ -2553,7 +2553,7 @@ async function provideNpmImportCompletions(model, position, context, token) {
 	return {suggestions, incomplete: true};
 }
 
-
+// ---------- autocomplete di package.json (nama paket & versi, terbaru dulu) ----------
 function npmJsonContext(text, offset) {
 	const frames = [];
 	let inString = false;
@@ -2708,8 +2708,8 @@ function setupNpm() {
 }
 
 
-
-
+// ---------- paket lokal: package.json + .d.ts di dalam project dianggap "node_modules" ----------
+// Contoh: /myserver/package.json + /myserver/index.d.ts -> `import { x } from "myserver"` di file JS/TS mana pun langsung dapat autocomplete.
 npmState.local = new Map();
 npmState.localNames = new Set();
 function npmSyncLocal() {
@@ -2747,6 +2747,14 @@ function npmSyncLocal() {
 	});
 	const entries = [];
 	const names = new Set();
+	// folder node_modules asli (hasil npm install / import folder): .d.ts + package.json dipasang apa adanya
+	const modelUris = new Set(models.map(model => model.uri.toString()));
+	models.forEach(model => {
+		const path = model.uri.path;
+		const index = path.lastIndexOf("/node_modules/");
+		if (index === -1 || !/(\.d\.[mc]?ts|(^|\/)package\.json)$/i.test(path)) return;
+		entries.push({raw: "node_modules/" + path.slice(index + 14), content: model.getValue()});
+	});
 	packages.forEach(pkg => {
 		if (!pkg.files.length) return;
 		let manifest = pkg.manifest;
@@ -2763,6 +2771,7 @@ function npmSyncLocal() {
 	const seen = new Set();
 	mapped.forEach(entry => {
 		const uri = "file:///node_modules/" + entry.path;
+		if (modelUris.has(uri)) return;
 		seen.add(uri);
 		const current = npmState.local.get(uri);
 		if (current && current.content === entry.content) return;
@@ -2773,13 +2782,11 @@ function npmSyncLocal() {
 		value.lib.dispose();
 		npmState.local.delete(uri);
 	});
-	const added = Array.from(names).filter(name => !npmState.localNames.has(name));
 	npmState.localNames = names;
-	if (added.length) showToast("Paket lokal: " + added.join(", "));
 }
 
-
-
+// ---- ZIP types menang atas npm ----
+// Kalau nama paket dari ZIP (Settings > Types) sama dengan paket npm yang sudah/akan dimuat, buang versi npm dan sinkron ulang.
 const npmOriginalRegisterTypes = registerTypes;
 registerTypes = function (types) {
 	const result = npmOriginalRegisterTypes(types);
@@ -2803,5 +2810,120 @@ registerTypes = function (types) {
 	}
 	return result;
 };
+
+// ================= Cek Semua (menu titik tiga di Home) =================
+const CEK_ICON_NAMES = ["nodejs", "npm", "tsconfig", "jsconfig", "readme"];
+async function cekProbe(url, init) {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), 15000);
+	try {
+		const response = await fetch(url, Object.assign({signal: controller.signal}, init || {}));
+		if (!response.ok) throw new Error("HTTP " + response.status);
+		return true;
+	} catch (error) {
+		throw new Error(error && error.name === "AbortError" ? "timeout" : (error && error.message === "Failed to fetch" ? "tidak bisa dijangkau (offline/diblokir/CORS)" : (error && error.message) || String(error)));
+	} finally {
+		clearTimeout(timer);
+	}
+}
+async function cekWorker(language) {
+	const api = tsApi();
+	const getter = language === "javascript" ? api.getJavaScriptWorker : api.getTypeScriptWorker;
+	if (typeof getter !== "function") throw new Error("API worker tidak ada");
+	let model = monaco.editor.getModels().find(item => item.getLanguageId() === language);
+	let temporary = false;
+	if (!model) {
+		model = monaco.editor.createModel("const a = 1;", language, monaco.Uri.parse("file:///__cek__." + (language === "javascript" ? "js" : "ts")));
+		temporary = true;
+	}
+	try {
+		const accessor = await getter();
+		const worker = await Promise.race([accessor(model.uri), new Promise((resolve, reject) => setTimeout(() => reject(new Error("worker tidak merespons (timeout)")), 15000))]);
+		await worker.getCompilationSettings();
+	} finally {
+		if (temporary) model.dispose();
+	}
+}
+async function runCekSemua() {
+	showToast("Memeriksa semua...");
+	const ok = [];
+	const bad = [];
+	const task = (label, fn) => Promise.resolve().then(fn).then(
+		detail => ok.push(label + (detail ? " - " + detail : "")),
+		error => bad.push(label + " - " + ((error && error.message) || String(error)))
+	);
+	const jobs = [];
+	const iconBase = typeof FILE_ICON_BASE === "string" ? FILE_ICON_BASE : "";
+
+	// --- Editor ---
+	const waitStart = Date.now();
+	while (!(typeof monaco !== "undefined" && typeof monacoReady !== "undefined" && monacoReady) && Date.now() - waitStart < 12000) await npmSleep(300);
+	const monacoUp = typeof monaco !== "undefined" && typeof monacoReady !== "undefined" && monacoReady;
+	jobs.push(task("Monaco Editor", () => {
+		if (!monacoUp) throw new Error("belum termuat (cek koneksi ke cdn.jsdelivr.net)");
+		return "siap";
+	}));
+	jobs.push(task("Instance editor", () => {
+		if (typeof editor === "undefined" || !editor) throw new Error("belum dibuat (buka satu file dulu)");
+	}));
+	jobs.push(task("loader.js (Monaco)", () => cekProbe("https://cdn.jsdelivr.net/npm/monaco-editor@0.57.0/min/vs/loader.js", {method: "HEAD"})));
+	jobs.push(task("editor.main.js (Monaco)", () => cekProbe("https://cdn.jsdelivr.net/npm/monaco-editor@0.57.0/min/vs/editor/editor.main.js", {method: "HEAD"})));
+	jobs.push(task("JSZip", () => {
+		if (typeof JSZip === "undefined") throw new Error("belum termuat (cdnjs.cloudflare.com)");
+		return "siap";
+	}));
+	if (monacoUp) {
+		jobs.push(task("TypeScript worker", async () => {
+			await cekWorker("typescript");
+			const api = tsApi();
+			return "TypeScript " + (api.typescriptVersion || api.typeScriptVersion || "?");
+		}));
+		jobs.push(task("JavaScript worker", () => cekWorker("javascript")));
+		jobs.push(task("JSON language service", () => {
+			if (!jsonApi() || !jsonApi().jsonDefaults) throw new Error("tidak tersedia");
+		}));
+		jobs.push(task("Types terpasang", () => {
+			const total = Object.keys(tsApi().typescriptDefaults.getExtraLibs()).length;
+			return total + " file (ZIP/folder: " + (total - npmState.local.size) + ", paket lokal: " + npmState.local.size + ")";
+		}));
+	}
+
+	// --- Schema JSON ---
+	if (typeof jsonSchemaDebug !== "undefined") {
+		if (jsonSchemaDebug.status === "loading") {
+			bad.push("Schema JSON - masih memuat (atau Monaco belum siap)");
+		} else {
+			ok.push("Schema JSON - " + jsonSchemaDebug.loaded.length + " berhasil dimuat");
+			jsonSchemaDebug.failed.forEach(item => bad.push("Schema - " + item));
+		}
+	}
+
+	// --- Icon ---
+	CEK_ICON_NAMES.forEach(name => jobs.push(task("Icon " + name, () => cekProbe(iconBase + name + ".svg", {method: "HEAD"}))));
+
+	// --- Layanan autocomplete NPM ---
+	jobs.push(task("npm registry (saran nama paket)", () => cekProbe("https://registry.npmjs.org/-/v1/search?size=1&text=lodash")));
+	jobs.push(task("jsDelivr API (saran versi)", () => cekProbe("https://data.jsdelivr.com/v1/packages/npm/ms/resolved?specifier=latest")));
+
+	// --- Penyimpanan ---
+	jobs.push(task("IndexedDB (cache)", async () => {
+		await npmOpenDb();
+	}));
+	jobs.push(task("localStorage", () => {
+		localStorage.setItem("__cek__", "1");
+		localStorage.removeItem("__cek__");
+	}));
+
+	await Promise.all(jobs);
+	const text = "Cek Semua selesai\n\nBerhasil (" + ok.length + "):\n" + ok.map(line => "✓ " + line).join("\n") + "\n\nGagal (" + bad.length + "):\n" + (bad.length ? bad.map(line => "✗ " + line).join("\n") : "tidak ada");
+	console[bad.length ? "warn" : "log"](text);
+	alert(text);
+}
+(function () {
+	const button = document.getElementById("btn-check-all");
+	if (button) button.addEventListener("click", () => {
+		runCekSemua().catch(error => alert("Cek Semua gagal dijalankan: " + ((error && error.message) || error)));
+	});
+})();
 </script>
 </html>
